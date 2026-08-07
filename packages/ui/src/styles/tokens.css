@@ -1,0 +1,57 @@
+:root {
+  --miran-color-brand: #111827;
+  --miran-color-brand-contrast: #ffffff;
+  --miran-color-surface: #ffffff;
+  --miran-color-surface-muted: #f3f4f6;
+  --miran-color-text: #111827;
+  --miran-color-text-muted: #6b7280;
+  --miran-color-border: #e5e7eb;
+  --miran-color-danger: #b91c1c;
+  --miran-radius-sm: 0.5rem;
+  --miran-radius-md: 0.75rem;
+  --miran-radius-lg: 1rem;
+  --miran-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.06);
+  --miran-space-1: 0.25rem;
+  --miran-space-2: 0.5rem;
+  --miran-space-3: 0.75rem;
+  --miran-space-4: 1rem;
+  --miran-space-6: 1.5rem;
+  --miran-space-8: 2rem;
+  --miran-space-12: 3rem;
+  --miran-container: 76rem;
+  --miran-container-wide: 90rem;
+}
+
+.miran-container {
+  width: min(100% - 2rem, var(--miran-container));
+  margin-inline: auto;
+}
+
+.miran-container--wide {
+  max-width: var(--miran-container-wide);
+}
+
+.miran-button {
+  min-height: 2.75rem;
+  padding-inline: 1rem;
+  border-radius: var(--miran-radius-md);
+  border: 1px solid transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.miran-button--primary {
+  background: var(--miran-color-brand);
+  color: var(--miran-color-brand-contrast);
+}
+
+.miran-button--secondary {
+  background: var(--miran-color-surface);
+  color: var(--miran-color-text);
+  border-color: var(--miran-color-border);
+}
+
+.miran-button--ghost {
+  background: transparent;
+  color: var(--miran-color-text);
+}

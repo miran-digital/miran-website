@@ -1,0 +1,7 @@
+{
+  "name": "@miran/typescript-config",
+  "version": "0.0.0",
+  "private": true,
+  "files": ["nextjs.json"],
+  "exports": {"./nextjs.json": "./nextjs.json"}
+}
