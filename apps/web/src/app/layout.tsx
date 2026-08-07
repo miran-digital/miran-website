@@ -7,7 +7,11 @@ import { SiteHeader } from '@/components/layout/site-header';
 
 export const metadata: Metadata = {
   title: { default: 'Miran Shop', template: '%s | Miran Shop' },
-  description: 'Miran Shop marketplace storefront'
+  description: 'Miran Shop marketplace storefront',
+  robots: {
+    index: process.env.NODE_ENV === 'production',
+    follow: process.env.NODE_ENV === 'production'
+  }
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
