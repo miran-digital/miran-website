@@ -1,18 +1,14 @@
-import { Container } from '@miran/ui';
+import { CategorySection } from '@/features/home/category-section';
+import { getHomeContent } from '@/features/home/home-content';
+import { HeroSection } from '@/features/home/hero-section';
 
-export default function HomePage() {
+export default async function HomePage() {
+  const content = await getHomeContent();
+
   return (
-    <main className="foundation-page">
-      <Container>
-        <section className="foundation-card" aria-labelledby="foundation-title">
-          <p className="foundation-kicker">Miran Shop</p>
-          <h1 id="foundation-title">پایه Storefront آماده توسعه است</h1>
-          <p>
-            این صفحه فقط برای تأیید سالم بودن لایه وب، RTL، Design Tokens و ساختار مشترک است.
-            طراحی نهایی صفحه اصلی در مرحله بعد انجام می‌شود.
-          </p>
-        </section>
-      </Container>
+    <main>
+      <HeroSection content={content.hero} />
+      <CategorySection categories={content.categories} />
     </main>
   );
 }
