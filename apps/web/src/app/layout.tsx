@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import '@miran/ui';
 import './storefront.css';
 import { MobileNavigation } from '@/components/layout/mobile-navigation';
+import { SiteFooter } from '@/components/layout/site-footer';
 import { SiteHeader } from '@/components/layout/site-header';
 
 export const metadata: Metadata = {
@@ -20,6 +21,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
       <body>
         <SiteHeader />
         {children}
+        <SiteFooter />
         <MobileNavigation />
       </body>
     </html>

@@ -1,8 +1,10 @@
+import { BrandSection } from '@/features/home/brand-section';
 import { CategorySection } from '@/features/home/category-section';
 import { getHomeContent } from '@/features/home/home-content';
 import { HeroSection } from '@/features/home/hero-section';
 import { getHomeMerchandisingContent } from '@/features/home/merchandising-content';
 import { ProductRail } from '@/features/home/product-rail';
+import { TrustSection } from '@/features/home/trust-section';
 
 export default async function HomePage() {
   const [content, merchandising] = await Promise.all([
@@ -19,6 +21,8 @@ export default async function HomePage() {
         <ProductRail key={section.id} section={section} />
       ))}
       <ProductRail section={merchandising.trending} />
+      <BrandSection content={content.brands} />
+      <TrustSection services={content.trustServices} />
     </main>
   );
 }
