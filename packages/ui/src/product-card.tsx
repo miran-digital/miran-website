@@ -20,7 +20,7 @@ type ProductCardProps = {
 
 function formatMoney(money: Money, locale: string) {
   const formatter = new Intl.NumberFormat(locale, { style: 'currency', currency: money.currency });
-  const minorDigits = formatter.resolvedOptions().maximumFractionDigits;
+  const minorDigits = formatter.resolvedOptions().maximumFractionDigits ?? 0;
   return formatter.format(money.amountMinor / 10 ** minorDigits);
 }
 

@@ -8,8 +8,8 @@ type ErrorStateProps = {
 
 export function ErrorState({ title, description, action }: ErrorStateProps) {
   return (
-    <section className="miran-state miran-state--error" role="alert" aria-labelledby="error-state-title">
-      <h2 id="error-state-title">{title}</h2>
+    <section className="miran-state miran-state--error" role="alert">
+      <h2>{title}</h2>
       {description ? <p>{description}</p> : null}
       {action ? <div className="miran-state__action">{action}</div> : null}
     </section>

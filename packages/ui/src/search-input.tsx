@@ -19,8 +19,7 @@ export function SearchInput({
 }: SearchInputProps) {
   return (
     <form className={`miran-search ${className}`.trim()} role="search" action={action} method="get">
-      <label className="miran-visually-hidden" htmlFor="miran-search-input">{ariaLabel}</label>
-      <input id="miran-search-input" className="miran-search__input" type="search" name={name} defaultValue={defaultValue} placeholder={placeholder} autoComplete="off" />
+      <input className="miran-search__input" type="search" name={name} defaultValue={defaultValue} placeholder={placeholder} autoComplete="off" aria-label={ariaLabel} />
       <button className="miran-search__button" type="submit">{buttonLabel}</button>
     </form>
   );

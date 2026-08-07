@@ -8,8 +8,8 @@ type StateProps = {
 
 export function EmptyState({ title, description, action }: StateProps) {
   return (
-    <section className="miran-state" aria-labelledby="empty-state-title">
-      <h2 id="empty-state-title">{title}</h2>
+    <section className="miran-state">
+      <h2>{title}</h2>
       {description ? <p>{description}</p> : null}
       {action ? <div className="miran-state__action">{action}</div> : null}
     </section>

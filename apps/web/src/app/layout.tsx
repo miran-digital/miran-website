@@ -8,10 +8,10 @@ import { SiteHeader } from '@/components/layout/site-header';
 
 export const metadata: Metadata = {
   title: { default: 'Miran Shop', template: '%s | Miran Shop' },
-  description: 'Miran Shop marketplace storefront',
+  description: 'فروشگاه اینترنتی Miran Shop؛ تجربه‌ای ساده و مطمئن برای جست‌وجو، مقایسه و خرید آنلاین.',
   robots: {
-    index: process.env.NODE_ENV === 'production',
-    follow: process.env.NODE_ENV === 'production'
+    index: process.env.SITE_INDEXABLE === 'true',
+    follow: process.env.SITE_INDEXABLE === 'true'
   }
 };
 
