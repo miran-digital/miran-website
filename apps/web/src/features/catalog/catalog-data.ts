@@ -1,11 +1,14 @@
 import type {
   CatalogCategory,
+  CatalogBrand,
   CatalogGateway,
   CatalogListingQuery,
   CatalogListingResult,
   CatalogMoney,
   CatalogProductDetail,
   CatalogProductSummary,
+  CatalogSearchQuery,
+  CatalogSearchResult,
 } from "./catalog-gateway";
 
 const gbp = (amountMinor: number): CatalogMoney => ({
@@ -424,6 +427,42 @@ function getProductSlug(product: CatalogProductSummary) {
   return product.href.replace(/^\/product\//, "");
 }
 
+function normalizeSearchValue(value: string) {
+  return value
+    .trim()
+    .toLocaleLowerCase("fa")
+    .replace(/[يى]/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/\s+/g, " ");
+}
+
+function getProductSearchText(product: CatalogProductSummary) {
+  const categoryNames = product.categorySlugs
+    .map((slug) => findCategory(slug)?.name ?? "")
+    .join(" ");
+  return normalizeSearchValue(
+    `${product.title} ${product.brandName} ${categoryNames} ${product.mediaLabel}`,
+  );
+}
+
+function paginateProducts(
+  items: readonly CatalogProductSummary[],
+  query: CatalogSearchQuery,
+): CatalogSearchResult {
+  const pageSize = Math.max(1, Math.min(24, Math.trunc(query.pageSize)));
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const page = Math.min(Math.max(1, Math.trunc(query.page)), totalPages);
+  const start = (page - 1) * pageSize;
+  return {
+    query: query.query,
+    products: items.slice(start, start + pageSize),
+    totalProducts: items.length,
+    page,
+    pageSize,
+    totalPages,
+  };
+}
+
 function buildProductDetail(
   product: CatalogProductSummary,
 ): CatalogProductDetail | null {
@@ -476,12 +515,54 @@ const mockCatalogGateway: CatalogGateway = {
   async getCategorySlugs() {
     return categories.map((category) => category.slug);
   },
+  async listCategories() {
+    return categories;
+  },
   async getProduct(slug) {
     const product = products.find((item) => getProductSlug(item) === slug);
     return product ? buildProductDetail(product) : null;
   },
   async getProductSlugs() {
     return products.map(getProductSlug);
+  },
+  async searchProducts(query) {
+    const terms = normalizeSearchValue(query.query).split(" ").filter(Boolean);
+    if (terms.length === 0) return paginateProducts([], query);
+    const matches = products.filter((product) => {
+      const searchable = getProductSearchText(product);
+      return terms.every((term) => searchable.includes(term));
+    });
+    return paginateProducts(matches, query);
+  },
+  async listOffers(limit) {
+    const offers = products
+      .filter((product) => product.previousPrice !== undefined)
+      .sort((left, right) => left.featuredRank - right.featuredRank);
+    return limit === undefined ? offers : offers.slice(0, limit);
+  },
+  async listTrending(limit) {
+    const trending = [...products].sort((left, right) => {
+      if (left.inStock !== right.inStock) return left.inStock ? -1 : 1;
+      return left.featuredRank - right.featuredRank;
+    });
+    return limit === undefined ? trending : trending.slice(0, limit);
+  },
+  async listBrands() {
+    const brandMap = new Map<string, CatalogBrand>();
+    for (const product of products) {
+      const current = brandMap.get(product.brandId);
+      brandMap.set(product.brandId, {
+        id: product.brandId,
+        name: product.brandName,
+        productCount: (current?.productCount ?? 0) + 1,
+      });
+    }
+    return [...brandMap.values()].sort((left, right) =>
+      left.name.localeCompare(right.name),
+    );
+  },
+  async listBrandProducts(brandId) {
+    return products.filter((product) => product.brandId === brandId);
   },
   async listRelatedProducts(productId, categorySlugs, limit) {
     return products
@@ -558,6 +639,10 @@ export async function getCatalogCategorySlugs() {
   return mockCatalogGateway.getCategorySlugs();
 }
 
+export async function getCatalogCategories() {
+  return mockCatalogGateway.listCategories();
+}
+
 export async function getCatalogListing(query: CatalogListingQuery) {
   return mockCatalogGateway.listCategory(query);
 }
@@ -568,6 +653,26 @@ export async function getCatalogProduct(slug: string) {
 
 export async function getCatalogProductSlugs() {
   return mockCatalogGateway.getProductSlugs();
+}
+
+export async function searchCatalogProducts(query: CatalogSearchQuery) {
+  return mockCatalogGateway.searchProducts(query);
+}
+
+export async function getCatalogOffers(limit?: number) {
+  return mockCatalogGateway.listOffers(limit);
+}
+
+export async function getCatalogTrending(limit?: number) {
+  return mockCatalogGateway.listTrending(limit);
+}
+
+export async function getCatalogBrands() {
+  return mockCatalogGateway.listBrands();
+}
+
+export async function getCatalogBrandProducts(brandId: string) {
+  return mockCatalogGateway.listBrandProducts(brandId);
 }
 
 export async function getRelatedCatalogProducts(

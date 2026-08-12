@@ -1,0 +1,206 @@
+.page {
+  min-height: 60vh;
+  padding-block: var(--miran-space-5) 6rem;
+  background: var(--miran-color-surface);
+}
+
+.breadcrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--miran-space-2);
+  align-items: center;
+  color: var(--miran-color-text-muted);
+  font-size: var(--miran-font-size-sm);
+}
+
+.breadcrumbs a:hover,
+.breadcrumbs a:focus-visible {
+  color: var(--miran-color-text);
+}
+
+.header {
+  max-width: 55rem;
+  padding-block: var(--miran-space-6) var(--miran-space-8);
+}
+
+.header p,
+.header h1 {
+  margin: 0;
+}
+
+.header > p:first-child {
+  color: var(--miran-color-brand);
+  font-size: var(--miran-font-size-sm);
+  font-weight: 900;
+}
+
+.header h1 {
+  margin-block-start: var(--miran-space-2);
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  line-height: var(--miran-line-height-tight);
+}
+
+.header > p:last-of-type {
+  margin-block-start: var(--miran-space-3);
+  color: var(--miran-color-text-muted);
+  font-size: var(--miran-font-size-lg);
+}
+
+.header small {
+  display: block;
+  margin-block-start: var(--miran-space-3);
+  color: var(--miran-color-text-muted);
+}
+
+.searchForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--miran-space-2);
+  max-width: 48rem;
+  margin-block-end: var(--miran-space-8);
+}
+
+.searchForm input {
+  min-width: 0;
+  min-height: 3.25rem;
+  border: 1px solid var(--miran-color-border);
+  border-radius: var(--miran-radius-md);
+  background: var(--miran-color-surface);
+  color: var(--miran-color-text);
+  padding-inline: var(--miran-space-4);
+}
+
+.searchForm button,
+.empty a {
+  min-height: 3.25rem;
+  border: 0;
+  border-radius: var(--miran-radius-md);
+  padding-inline: var(--miran-space-5);
+  background: var(--miran-color-brand);
+  color: var(--miran-color-brand-contrast);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.productGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--miran-space-3);
+}
+
+.media {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  background: linear-gradient(135deg, #f8fafc, #e2e8f0);
+  color: #64748b;
+  font-size: var(--miran-font-size-sm);
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}
+
+.categoryGrid,
+.brandGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--miran-space-3);
+}
+
+.categoryCard,
+.brandCard {
+  display: grid;
+  min-height: 9rem;
+  align-content: end;
+  gap: var(--miran-space-2);
+  border: 1px solid var(--miran-color-border);
+  border-radius: var(--miran-radius-lg);
+  padding: var(--miran-space-4);
+  background:
+    radial-gradient(circle at 20% 15%, rgb(219 234 254 / 0.8), transparent 35%),
+    var(--miran-color-surface);
+  box-shadow: var(--miran-shadow-sm);
+}
+
+.categoryCard h2,
+.categoryCard p,
+.brandCard h2,
+.brandCard p {
+  margin: 0;
+}
+
+.categoryCard h2,
+.brandCard h2 {
+  font-size: var(--miran-font-size-lg);
+}
+
+.categoryCard p,
+.brandCard p {
+  color: var(--miran-color-text-muted);
+  font-size: var(--miran-font-size-sm);
+}
+
+.empty {
+  display: grid;
+  justify-items: start;
+  gap: var(--miran-space-3);
+  padding: var(--miran-space-8);
+  border: 1px dashed var(--miran-color-border);
+  border-radius: var(--miran-radius-lg);
+  background: var(--miran-color-surface-muted);
+}
+
+.empty h2,
+.empty p {
+  margin: 0;
+}
+
+.empty p {
+  color: var(--miran-color-text-muted);
+}
+
+.empty a {
+  display: inline-flex;
+  align-items: center;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  gap: var(--miran-space-3);
+  align-items: center;
+  margin-block-start: var(--miran-space-8);
+}
+
+.pagination a {
+  min-height: 2.75rem;
+  border: 1px solid var(--miran-color-border);
+  border-radius: var(--miran-radius-md);
+  padding: var(--miran-space-2) var(--miran-space-4);
+  font-weight: 800;
+}
+
+@media (min-width: 48rem) {
+  .productGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--miran-space-4);
+  }
+
+  .categoryGrid,
+  .brandGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--miran-space-4);
+  }
+}
+
+@media (min-width: 64rem) {
+  .productGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .categoryGrid,
+  .brandGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
