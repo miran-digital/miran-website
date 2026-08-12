@@ -1,0 +1,36 @@
+.banners {
+  padding-block: var(--miran-space-5);
+}
+
+.bannerGrid {
+  display: grid;
+  gap: var(--miran-space-3);
+}
+
+.bannerGrid a {
+  display: grid;
+  min-height: 8rem;
+  align-content: end;
+  gap: var(--miran-space-2);
+  border: 1px solid var(--miran-color-border);
+  border-radius: var(--miran-radius-lg);
+  padding: var(--miran-space-5);
+  background: linear-gradient(135deg, #eff6ff, #f8fafc 60%, #ecfeff);
+  box-shadow: var(--miran-shadow-sm);
+}
+
+.bannerGrid span {
+  color: var(--miran-color-brand);
+  font-size: var(--miran-font-size-sm);
+  font-weight: 900;
+}
+
+.bannerGrid strong {
+  font-size: var(--miran-font-size-xl);
+}
+
+@media (min-width: 48rem) {
+  .bannerGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
