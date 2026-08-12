@@ -175,11 +175,17 @@ export function CartPage() {
                   شوند.
                 </p>
               ) : null}
-              <button type="button" disabled aria-describedby="checkout-note">
-                ادامه فرایند خرید
-              </button>
+              {hasMixedCurrencies ? (
+                <span className={styles.checkoutDisabled}>
+                  ادامه فرایند خرید
+                </span>
+              ) : (
+                <a className={styles.checkoutAction} href="/checkout">
+                  ادامه فرایند خرید
+                </a>
+              )}
               <p id="checkout-note" className={styles.checkoutNote}>
-                اتصال Checkout امن در مرحله بعد انجام می‌شود.
+                در مرحله بعد نشانی و روش تحویل را مرور می‌کنید.
               </p>
             </aside>
           </div>
