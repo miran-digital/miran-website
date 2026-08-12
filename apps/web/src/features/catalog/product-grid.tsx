@@ -1,5 +1,6 @@
 import { ProductCard } from "@miran/ui";
 import type { CatalogProductSummary } from "./catalog-gateway";
+import { WishlistButton } from "@/features/wishlist/wishlist-button";
 import styles from "./discovery.module.css";
 
 export function ProductGrid({
@@ -33,6 +34,9 @@ export function ProductGrid({
               : `${product.brandName} · ناموجود`
           }
           price={product.price}
+          action={
+            <WishlistButton productId={product.id} title={product.title} />
+          }
           {...(product.badge === undefined ? {} : { badge: product.badge })}
           {...(product.previousPrice === undefined
             ? {}

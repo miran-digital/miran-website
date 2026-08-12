@@ -6,6 +6,7 @@ import type {
   CatalogProductSummary,
 } from "./catalog-gateway";
 import { ProductGallery } from "./product-gallery";
+import { WishlistButton } from "@/features/wishlist/wishlist-button";
 import styles from "./product-detail.module.css";
 
 type ProductDetailProps = {
@@ -60,9 +61,12 @@ export function ProductDetail({
           <section className={styles.summary} aria-labelledby="product-title">
             <div className={styles.meta}>
               <span>{product.brandName}</span>
-              {product.badge ? (
-                <Badge tone="brand">{product.badge}</Badge>
-              ) : null}
+              <span className={styles.metaActions}>
+                {product.badge ? (
+                  <Badge tone="brand">{product.badge}</Badge>
+                ) : null}
+                <WishlistButton productId={product.id} title={product.title} />
+              </span>
             </div>
             <h1 id="product-title">{product.title}</h1>
             <p className={styles.description}>{product.description}</p>
@@ -127,6 +131,9 @@ export function ProductDetail({
                   key={item.id}
                   href={item.href}
                   title={item.title}
+                  action={
+                    <WishlistButton productId={item.id} title={item.title} />
+                  }
                   media={
                     <span className={styles.relatedMedia}>
                       {item.mediaLabel}

@@ -1,5 +1,6 @@
 import { Container, ProductCard } from "@miran/ui";
 import type { CatalogListingResult, CatalogSort } from "./catalog-gateway";
+import { WishlistButton } from "@/features/wishlist/wishlist-button";
 import {
   buildCategoryListingHref,
   hasActiveListingFilters,
@@ -242,6 +243,12 @@ export function CategoryListing({ listing, state }: CategoryListingProps) {
                     key={product.id}
                     href={product.href}
                     title={product.title}
+                    action={
+                      <WishlistButton
+                        productId={product.id}
+                        title={product.title}
+                      />
+                    }
                     media={
                       <span className={styles.media}>{product.mediaLabel}</span>
                     }

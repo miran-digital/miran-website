@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react';
-import { Badge } from './badge';
-import { Card } from './card';
+import type { ReactNode } from "react";
+import { Badge } from "./badge";
+import { Card } from "./card";
 
 export type Money = {
   amountMinor: number;
@@ -16,31 +16,52 @@ type ProductCardProps = {
   eyebrow?: string;
   badge?: string;
   locale?: string;
+  action?: ReactNode;
 };
 
 function formatMoney(money: Money, locale: string) {
-  const formatter = new Intl.NumberFormat(locale, { style: 'currency', currency: money.currency });
+  const formatter = new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: money.currency,
+  });
   const minorDigits = formatter.resolvedOptions().maximumFractionDigits ?? 0;
   return formatter.format(money.amountMinor / 10 ** minorDigits);
 }
 
-export function ProductCard({ href, title, media, price, previousPrice, eyebrow, badge, locale = 'fa-IR' }: ProductCardProps) {
+export function ProductCard({
+  href,
+  title,
+  media,
+  price,
+  previousPrice,
+  eyebrow,
+  badge,
+  locale = "fa-IR",
+  action,
+}: ProductCardProps) {
   return (
     <Card className="miran-product-card" padding="none">
-      <a className="miran-product-card__link" href={href}>
-        <div className="miran-product-card__media">{media}</div>
-        <div className="miran-product-card__body">
-          <div className="miran-product-card__meta">
-            {eyebrow ? <span>{eyebrow}</span> : null}
-            {badge ? <Badge tone="brand">{badge}</Badge> : null}
+      <div className="miran-product-card__shell">
+        <a className="miran-product-card__link" href={href}>
+          <div className="miran-product-card__media">{media}</div>
+          <div className="miran-product-card__body">
+            <div className="miran-product-card__meta">
+              {eyebrow ? <span>{eyebrow}</span> : null}
+              {badge ? <Badge tone="brand">{badge}</Badge> : null}
+            </div>
+            <h3 className="miran-product-card__title">{title}</h3>
+            <div className="miran-product-card__price-row">
+              <strong>{formatMoney(price, locale)}</strong>
+              {previousPrice ? (
+                <del>{formatMoney(previousPrice, locale)}</del>
+              ) : null}
+            </div>
           </div>
-          <h3 className="miran-product-card__title">{title}</h3>
-          <div className="miran-product-card__price-row">
-            <strong>{formatMoney(price, locale)}</strong>
-            {previousPrice ? <del>{formatMoney(previousPrice, locale)}</del> : null}
-          </div>
-        </div>
-      </a>
+        </a>
+        {action ? (
+          <div className="miran-product-card__action">{action}</div>
+        ) : null}
+      </div>
     </Card>
   );
 }

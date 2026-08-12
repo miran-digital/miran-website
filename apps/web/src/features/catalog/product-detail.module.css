@@ -102,6 +102,12 @@
   font-weight: 800;
 }
 
+.metaActions {
+  display: inline-flex;
+  gap: var(--miran-space-2);
+  align-items: center;
+}
+
 .summary h1 {
   margin: var(--miran-space-3) 0 0;
   font-size: clamp(2rem, 6vw, 3.5rem);

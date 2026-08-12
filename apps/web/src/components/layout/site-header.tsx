@@ -1,6 +1,7 @@
 import { Container } from "@miran/ui";
 import { CartLink } from "@/features/cart/cart-link";
 import { HeaderSearch } from "@/features/search/header-search";
+import { WishlistLink } from "@/features/wishlist/wishlist-link";
 import { MegaMenu } from "./mega-menu";
 
 export function SiteHeader() {
@@ -22,7 +23,7 @@ export function SiteHeader() {
         </div>
         <nav className="site-header__actions" aria-label="دسترسی سریع">
           <a href="/account">حساب کاربری</a>
-          <a href="/wishlist">علاقه‌مندی‌ها</a>
+          <WishlistLink />
           <CartLink />
         </nav>
       </Container>
