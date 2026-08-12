@@ -54,6 +54,16 @@ export type AdminState = {
 
 const storageKey = "miran.admin-preview.v1";
 const changeEvent = "miran:admin-preview-change";
+const sectionKeys: readonly AdminSectionKey[] = [
+  "hero",
+  "categories",
+  "specialOffers",
+  "digitalPicks",
+  "homePicks",
+  "trending",
+  "brands",
+  "trust",
+];
 
 export const adminSectionLabels: Record<AdminSectionKey, string> = {
   hero: "Hero",
@@ -111,11 +121,82 @@ function isAdminState(value: unknown): value is AdminState {
     state.version === 1 &&
     typeof state.sections === "object" &&
     state.sections !== null &&
+    sectionKeys.every((key) => typeof state.sections?.[key] === "boolean") &&
     Array.isArray(state.hiddenCategoryIds) &&
+    state.hiddenCategoryIds.every((id) => isShortString(id, 120)) &&
     Array.isArray(state.headerMessages) &&
+    state.headerMessages.every(isHeaderMessage) &&
     Array.isArray(state.banners) &&
+    state.banners.every(isBanner) &&
     Array.isArray(state.productRows) &&
-    Array.isArray(state.products)
+    state.productRows.every(isProductRow) &&
+    Array.isArray(state.products) &&
+    state.products.every(isProduct)
+  );
+}
+
+function isShortString(value: unknown, maxLength: number): value is string {
+  return typeof value === "string" && value.length <= maxLength;
+}
+
+function isHeaderMessage(value: unknown): value is AdminHeaderMessage {
+  if (typeof value !== "object" || value === null) return false;
+  const item = value as Record<string, unknown>;
+  return (
+    isShortString(item.id, 120) &&
+    isShortString(item.text, 160) &&
+    isShortString(item.href, 300) &&
+    isShortString(item.startsAt, 40) &&
+    isShortString(item.endsAt, 40) &&
+    typeof item.visible === "boolean"
+  );
+}
+
+function isBanner(value: unknown): value is AdminBanner {
+  if (typeof value !== "object" || value === null) return false;
+  const item = value as Record<string, unknown>;
+  return (
+    isShortString(item.id, 120) &&
+    isShortString(item.title, 160) &&
+    isShortString(item.href, 300) &&
+    typeof item.visible === "boolean"
+  );
+}
+
+function isProductRow(value: unknown): value is AdminProductRow {
+  if (typeof value !== "object" || value === null) return false;
+  const item = value as Record<string, unknown>;
+  return (
+    isShortString(item.id, 120) &&
+    isShortString(item.title, 160) &&
+    typeof item.itemLimit === "number" &&
+    Number.isSafeInteger(item.itemLimit) &&
+    item.itemLimit >= 1 &&
+    item.itemLimit <= 24 &&
+    typeof item.visible === "boolean"
+  );
+}
+
+function isProduct(value: unknown): value is AdminProduct {
+  if (typeof value !== "object" || value === null) return false;
+  const item = value as Record<string, unknown>;
+  const imageIsSafe =
+    item.imageDataUrl === "" ||
+    (isShortString(item.imageDataUrl, 1_400_000) &&
+      /^data:image\/(?:avif|gif|jpeg|png|webp);base64,/.test(
+        item.imageDataUrl,
+      ));
+  return (
+    isShortString(item.id, 120) &&
+    isShortString(item.title, 180) &&
+    isShortString(item.slug, 180) &&
+    isShortString(item.brand, 100) &&
+    isShortString(item.category, 100) &&
+    typeof item.priceMinor === "number" &&
+    Number.isSafeInteger(item.priceMinor) &&
+    item.priceMinor >= 0 &&
+    imageIsSafe &&
+    typeof item.visible === "boolean"
   );
 }
 
@@ -124,7 +205,21 @@ export function getAdminState() {
     const value = window.localStorage.getItem(storageKey);
     if (!value) return createDefaultAdminState();
     const parsed: unknown = JSON.parse(value);
-    return isAdminState(parsed) ? parsed : createDefaultAdminState();
+    if (!isAdminState(parsed)) return createDefaultAdminState();
+    return {
+      ...parsed,
+      hiddenCategoryIds: [...new Set(parsed.hiddenCategoryIds)].slice(0, 100),
+      headerMessages: parsed.headerMessages.slice(0, 10).map((message) => ({
+        ...message,
+        href: normalizeAdminHref(message.href),
+      })),
+      banners: parsed.banners.slice(0, 20).map((banner) => ({
+        ...banner,
+        href: normalizeAdminHref(banner.href),
+      })),
+      productRows: parsed.productRows.slice(0, 20),
+      products: parsed.products.slice(0, 20),
+    };
   } catch {
     return createDefaultAdminState();
   }

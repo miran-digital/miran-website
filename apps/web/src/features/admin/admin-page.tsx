@@ -179,7 +179,7 @@ export function AdminPage({
           visible: true,
         },
         ...state.products,
-      ],
+      ].slice(0, 20),
     });
     form.reset();
     setProductImage("");
@@ -313,18 +313,28 @@ export function AdminPage({
                   >
                     <input
                       name="text"
+                      aria-label="متن پیام Header"
                       required
                       maxLength={160}
                       placeholder="متن پیام"
                     />
                     <input
                       name="href"
+                      aria-label="لینک پیام Header"
                       maxLength={300}
                       placeholder="لینک مثل /offers"
                       dir="ltr"
                     />
-                    <input name="startsAt" type="datetime-local" />
-                    <input name="endsAt" type="datetime-local" />
+                    <input
+                      name="startsAt"
+                      type="datetime-local"
+                      aria-label="زمان شروع نمایش پیام"
+                    />
+                    <input
+                      name="endsAt"
+                      type="datetime-local"
+                      aria-label="زمان پایان نمایش پیام"
+                    />
                     <button
                       type="submit"
                       disabled={state.headerMessages.length >= 10}
@@ -364,12 +374,14 @@ export function AdminPage({
                   <form className={styles.inlineForm} onSubmit={addBanner}>
                     <input
                       name="title"
+                      aria-label="عنوان بنر"
                       required
                       maxLength={160}
                       placeholder="عنوان بنر"
                     />
                     <input
                       name="href"
+                      aria-label="لینک مقصد بنر"
                       maxLength={300}
                       placeholder="لینک مقصد"
                       dir="ltr"

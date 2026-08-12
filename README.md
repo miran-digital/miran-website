@@ -1,37 +1,26 @@
 # Miran Shop
 
-Miran Shop is a long-term marketplace platform designed to grow without requiring a platform rewrite as new business capabilities are introduced.
+Phase 1 storefront and local Admin Preview for the Miran marketplace platform.
 
-## Architecture direction
+## Run locally
 
-- Monorepo managed with pnpm workspaces
-- TypeScript-first applications and services
-- Next.js storefront in `apps/web`
-- Backend services in `services/*`
-- Shared technical packages in `packages/*`
-- Infrastructure configuration in `infra/*`
-- Service scaffolding rules in `tooling/service-template`
-- PostgreSQL and Redis are shared infrastructure initially, while service data ownership remains explicit
-- External client traffic enters through Caddy and the API Gateway
-- Internal service-to-service communication is not required to traverse the public API Gateway
+Requirements: Node.js 24 and pnpm 11.
 
-## Current implementation scope
+```bash
+corepack enable
+pnpm install --frozen-lockfile
+pnpm dev:web
+```
 
-Only these runtime components are approved for Phase 1:
+Open `http://localhost:3000` for the storefront. The local Admin Preview is at `http://localhost:3000/admin`.
 
-1. `web`
-2. `api-gateway`
-3. `auth-service`
-4. `catalog-service`
-5. `admin-service`
-6. PostgreSQL
-7. Redis
-8. Caddy
+Admin Preview is deliberately not linked from the public storefront and is not production authentication. The security and persistence boundaries are documented in [ADR 0004](docs/architecture/decisions/0004-preview-and-production-boundaries.md).
 
-The wider marketplace service map is documented as future architecture. Unneeded services must not be implemented early.
+## Verify
 
-## Core rule
+```bash
+pnpm typecheck
+pnpm build
+```
 
-The foundation must be capable of supporting the future service map, while complexity is introduced only when a real requirement justifies it.
-
-See `docs/architecture/` for architectural decisions and constraints.
+Search indexing is disabled by default. Set `SITE_INDEXABLE=true` only after the production domain, legal copy, service integrations, and launch review are complete.
