@@ -212,6 +212,12 @@
   font-weight: 700;
 }
 
+.cartStatus a {
+  color: var(--miran-color-text);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
 .highlights {
   display: grid;
   gap: var(--miran-space-3);

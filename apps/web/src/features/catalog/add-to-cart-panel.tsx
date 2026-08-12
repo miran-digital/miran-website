@@ -49,6 +49,7 @@ export function AddToCartPanel({ product }: AddToCartPanelProps) {
       </button>
       <p className={styles.cartStatus} role="status" aria-live="polite">
         {message}
+        {message ? <a href="/cart"> مشاهده سبد خرید</a> : null}
       </p>
     </div>
   );
