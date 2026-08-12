@@ -25,6 +25,25 @@ export type CatalogProductSummary = {
   publishedAt: string;
 };
 
+export type CatalogProductMedia = {
+  id: string;
+  label: string;
+};
+
+export type CatalogProductSpecification = {
+  label: string;
+  value: string;
+};
+
+export type CatalogProductDetail = CatalogProductSummary & {
+  slug: string;
+  description: string;
+  primaryCategory: CatalogCategory;
+  media: readonly CatalogProductMedia[];
+  highlights: readonly string[];
+  specifications: readonly CatalogProductSpecification[];
+};
+
 export type CatalogSort = "featured" | "price-asc" | "price-desc" | "newest";
 
 export type CatalogListingQuery = {
@@ -57,6 +76,13 @@ export type CatalogListingResult = {
 export interface CatalogGateway {
   getCategory(slug: string): Promise<CatalogCategory | null>;
   getCategorySlugs(): Promise<readonly string[]>;
+  getProduct(slug: string): Promise<CatalogProductDetail | null>;
+  getProductSlugs(): Promise<readonly string[]>;
+  listRelatedProducts(
+    productId: string,
+    categorySlugs: readonly string[],
+    limit: number,
+  ): Promise<readonly CatalogProductSummary[]>;
   listCategory(
     query: CatalogListingQuery,
   ): Promise<CatalogListingResult | null>;

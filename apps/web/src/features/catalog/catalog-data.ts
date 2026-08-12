@@ -4,6 +4,7 @@ import type {
   CatalogListingQuery,
   CatalogListingResult,
   CatalogMoney,
+  CatalogProductDetail,
   CatalogProductSummary,
 } from "./catalog-gateway";
 
@@ -419,6 +420,40 @@ function findCategory(slug: string) {
   return categories.find((category) => category.slug === slug) ?? null;
 }
 
+function getProductSlug(product: CatalogProductSummary) {
+  return product.href.replace(/^\/product\//, "");
+}
+
+function buildProductDetail(
+  product: CatalogProductSummary,
+): CatalogProductDetail | null {
+  const primaryCategory = findCategory(product.categorySlugs[0] ?? "");
+  if (!primaryCategory) return null;
+
+  return {
+    ...product,
+    slug: getProductSlug(product),
+    description: `${product.title} از برند ${product.brandName}، انتخابی کاربردی از مجموعه ${primaryCategory.name} Miran Shop است که با تضمین اصالت کالا و پشتیبانی پس از خرید ارائه می‌شود.`,
+    primaryCategory,
+    media: [
+      { id: "primary", label: `نمای اصلی ${product.title}` },
+      { id: "detail", label: `جزئیات ${product.title}` },
+      { id: "package", label: `بسته‌بندی ${product.title}` },
+    ],
+    highlights: [
+      "تضمین اصالت و سلامت کالا",
+      "ارسال قابل پیگیری تا مقصد",
+      "پشتیبانی Miran Shop پس از خرید",
+    ],
+    specifications: [
+      { label: "برند", value: product.brandName },
+      { label: "دسته‌بندی", value: primaryCategory.name },
+      { label: "شناسه کالا", value: product.id },
+      { label: "وضعیت", value: product.inStock ? "موجود" : "ناموجود" },
+    ],
+  };
+}
+
 function sortProducts(
   items: CatalogProductSummary[],
   sort: CatalogListingQuery["sort"],
@@ -440,6 +475,23 @@ const mockCatalogGateway: CatalogGateway = {
   },
   async getCategorySlugs() {
     return categories.map((category) => category.slug);
+  },
+  async getProduct(slug) {
+    const product = products.find((item) => getProductSlug(item) === slug);
+    return product ? buildProductDetail(product) : null;
+  },
+  async getProductSlugs() {
+    return products.map(getProductSlug);
+  },
+  async listRelatedProducts(productId, categorySlugs, limit) {
+    return products
+      .filter(
+        (product) =>
+          product.id !== productId &&
+          product.categorySlugs.some((slug) => categorySlugs.includes(slug)),
+      )
+      .sort((left, right) => left.featuredRank - right.featuredRank)
+      .slice(0, limit);
   },
   async listCategory(query) {
     const category = findCategory(query.categorySlug);
@@ -508,4 +560,24 @@ export async function getCatalogCategorySlugs() {
 
 export async function getCatalogListing(query: CatalogListingQuery) {
   return mockCatalogGateway.listCategory(query);
+}
+
+export async function getCatalogProduct(slug: string) {
+  return mockCatalogGateway.getProduct(slug);
+}
+
+export async function getCatalogProductSlugs() {
+  return mockCatalogGateway.getProductSlugs();
+}
+
+export async function getRelatedCatalogProducts(
+  productId: string,
+  categorySlugs: readonly string[],
+  limit = 4,
+) {
+  return mockCatalogGateway.listRelatedProducts(
+    productId,
+    categorySlugs,
+    limit,
+  );
 }
