@@ -1,0 +1,75 @@
+name: One Shot Payment Expiry Fix
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/one-shot-fix-payment-expiry.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Apply guarded patch and remove this workflow
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("services/marketplace-core/postgres/payment-service.js")
+          text = path.read_text()
+
+          old_expiry = '''      if (reservations.rows.some((item) => new Date(item.expires_at) <= now)) {
+                await this.releaseOrderInsideTransaction(client, orderId, "PAYMENT_FAILED");
+                fail("Inventory reservation has expired", "CONFLICT");
+              }
+          '''
+          new_expiry = '''      if (reservations.rows.some((item) => new Date(item.expires_at) <= now)) {
+                await this.releaseOrderInsideTransaction(client, orderId, "PAYMENT_FAILED");
+                return { expired: true, orderId };
+              }
+          '''
+
+          old_after = '''    if (prepared.reused) return prepared;
+          
+              try {
+          '''
+          new_after = '''    if (prepared.expired) {
+                fail("Inventory reservation has expired", "CONFLICT");
+              }
+              if (prepared.reused) return prepared;
+          
+              try {
+          '''
+
+          if old_expiry not in text:
+              raise SystemExit("Guarded patch failed: expiry block did not match exactly")
+          if old_after not in text:
+              raise SystemExit("Guarded patch failed: post-transaction block did not match exactly")
+
+          text = text.replace(old_expiry, new_expiry, 1)
+          text = text.replace(old_after, new_after, 1)
+          path.write_text(text)
+          PY
+
+          rm .github/workflows/one-shot-fix-payment-expiry.yml
+
+          git diff --check
+          git diff --exit-code -- services/marketplace-core/postgres/payment-service.js && {
+            echo "Expected payment-service change was not produced" >&2
+            exit 1
+          }
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add services/marketplace-core/postgres/payment-service.js .github/workflows/one-shot-fix-payment-expiry.yml
+          git commit -m "fix(postgres): commit expired reservation release before conflict"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
