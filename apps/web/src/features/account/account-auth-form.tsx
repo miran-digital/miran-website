@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { AddressBook } from "./address-book";
 
 type User = { id: string; email: string; role: string };
 type Mode = "login" | "register";
@@ -53,7 +54,9 @@ export function AccountAuthForm() {
       }
       setUser(data.user);
       setPassword("");
-      setMessage(mode === "login" ? "ورود با موفقیت انجام شد." : "حساب شما ساخته شد.");
+      setMessage(
+        mode === "login" ? "ورود با موفقیت انجام شد." : "حساب شما ساخته شد.",
+      );
     } catch {
       setMessage("ارتباط با سرور برقرار نشد.");
     } finally {
@@ -89,6 +92,7 @@ export function AccountAuthForm() {
           {loading ? "در حال خروج…" : "خروج از حساب"}
         </button>
         {message ? <p role="status">{message}</p> : null}
+        <AddressBook />
       </div>
     );
   }
@@ -142,7 +146,9 @@ export function AccountAuthForm() {
         }}
         disabled={loading}
       >
-        {mode === "login" ? "حساب ندارید؟ ثبت‌نام" : "قبلاً ثبت‌نام کرده‌اید؟ ورود"}
+        {mode === "login"
+          ? "حساب ندارید؟ ثبت‌نام"
+          : "قبلاً ثبت‌نام کرده‌اید؟ ورود"}
       </button>
       {message ? <p role="alert">{message}</p> : null}
     </form>
