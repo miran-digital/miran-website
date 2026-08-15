@@ -97,7 +97,7 @@ export function RealSellerVerificationManager() {
             <p>Database-backed Seller Verification</p>
             <h2 id="real-sellers-title">تأیید واقعی فروشندگان</h2>
             <p className={styles.note}>
-              فروشنده فقط زمانی قابل تأیید است که حداقل یک مدرک و یک ضمانت داشته باشد و همه موارد ارسال‌شده توسط مدیر تأیید شده باشند.
+              فروشنده فقط زمانی قابل تأیید است که حداقل یک مدرک و یک ضمانت داشته باشد و همه موارد ارسال‌شده توسط مدیر تأیید شده باشند. فایل مدرک از فضای خصوصی فقط با لینک کوتاه‌عمر قابل مشاهده است.
             </p>
           </div>
           {loading && sellers.length === 0 ? <p role="status">در حال دریافت…</p> : null}
@@ -119,6 +119,13 @@ export function RealSellerVerificationManager() {
                 {seller.documents.map((document) => (
                   <div className={styles.actions} key={document.id}>
                     <span>{document.kind} — {document.status} — {Math.ceil(document.size_bytes / 1024).toLocaleString("fa-IR")} KB</span>
+                    <a
+                      href={`/api/admin/seller-documents/${encodeURIComponent(document.id)}/download`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      مشاهده امن مدرک
+                    </a>
                     <button type="button" disabled={loading || document.status === "APPROVED"} onClick={() => void patch({ action: "document-review", id: document.id, status: "APPROVED" })}>تأیید مدرک</button>
                     <button type="button" disabled={loading || document.status === "REJECTED"} onClick={() => void patch({ action: "document-review", id: document.id, status: "REJECTED" })}>رد مدرک</button>
                   </div>
