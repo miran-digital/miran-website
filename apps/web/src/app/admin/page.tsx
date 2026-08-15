@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AdminPage } from "@/features/admin/admin-page";
+import { RealCategoryManager } from "@/features/admin/real-category-manager";
 import { RealProductManager } from "@/features/admin/real-product-manager";
+import { RealSellerVerificationManager } from "@/features/admin/real-seller-verification-manager";
 import { getCatalogCategories } from "@/features/catalog/catalog-data";
 import { getCurrentUser } from "@/lib/auth/current-user";
 
@@ -19,7 +21,9 @@ export default async function AdminRoute() {
   const categories = await getCatalogCategories();
   return (
     <>
+      <RealCategoryManager />
       <RealProductManager />
+      <RealSellerVerificationManager />
       <AdminPage categories={categories} />
     </>
   );
