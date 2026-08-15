@@ -5,6 +5,7 @@ import { LegacyPreviewImportManager } from "@/features/admin/legacy-preview-impo
 import { RealCategoryManager } from "@/features/admin/real-category-manager";
 import { RealOrderManager } from "@/features/admin/real-order-manager";
 import { RealProductManager } from "@/features/admin/real-product-manager";
+import { RealProductMediaUploadManager } from "@/features/admin/real-product-media-upload-manager";
 import { RealSellerVerificationManager } from "@/features/admin/real-seller-verification-manager";
 import { RealStorefrontCmsManager } from "@/features/admin/real-storefront-cms-manager";
 import { getCatalogCategories } from "@/features/catalog/catalog-data";
@@ -28,6 +29,7 @@ export default async function AdminRoute() {
       <RealOrderManager />
       <RealCategoryManager />
       <RealProductManager />
+      <RealProductMediaUploadManager />
       <RealSellerVerificationManager />
       <LegacyPreviewImportManager />
       <AdminPage categories={legacyCategories} />
