@@ -8,7 +8,12 @@ test("migrations are ordered, recorded and idempotent", () => {
   migrateSqlite(db);
 
   const versions = db.prepare("SELECT version FROM schema_migrations ORDER BY version").all();
-  assert.deepEqual(versions.map((row) => row.version), ["001_init.sql", "002_catalog_enrichment.sql"]);
+  assert.deepEqual(versions.map((row) => row.version), [
+    "001_init.sql",
+    "002_catalog_enrichment.sql",
+    "003_storefront_cms.sql",
+    "004_payment_hardening.sql",
+  ]);
 
   const productColumns = db.prepare("PRAGMA table_info(products)").all().map((row) => row.name);
   assert.ok(productColumns.includes("brand"));
@@ -17,5 +22,14 @@ test("migrations are ordered, recorded and idempotent", () => {
 
   const categoryColumns = db.prepare("PRAGMA table_info(categories)").all().map((row) => row.name);
   assert.ok(categoryColumns.includes("description"));
+
+  const homeSectionColumns = db.prepare("PRAGMA table_info(home_sections)").all().map((row) => row.name);
+  assert.ok(homeSectionColumns.includes("section_key"));
+  assert.ok(homeSectionColumns.includes("visible"));
+
+  const paymentColumns = db.prepare("PRAGMA table_info(payments)").all().map((row) => row.name);
+  assert.ok(paymentColumns.includes("authority"));
+  assert.ok(paymentColumns.includes("reference_id"));
+
   db.close();
 });
