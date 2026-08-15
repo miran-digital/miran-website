@@ -38,7 +38,7 @@ export class PostgresPaymentService {
       assert(order, "Order not found", "NOT_FOUND");
       assert(order.status === "PENDING_PAYMENT", "Order is not payable", "CONFLICT");
       const amountIrr = money(order.total_irr, "order amount");
-      assert(amountIrr >= 10_000, "Order amount is below Zarinpal minimum", "INVALID_PAYMENT_AMOUNT");
+      assert(amountIrr > 0, "Order amount must be positive", "INVALID_PAYMENT_AMOUNT");
 
       const reservations = await client.query(
         `SELECT * FROM inventory_reservations
