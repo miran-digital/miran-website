@@ -4,6 +4,8 @@ import { CatalogService } from "./catalog-service.js";
 import { CategoryService } from "./category-service.js";
 import { MarketplaceCore } from "./core.js";
 import { migrateSqlite, openSqliteDatabase } from "./database.js";
+import { ProductCreateService } from "./product-create-service.js";
+import { PublicCatalogService } from "./public-catalog-service.js";
 import { SellerVerificationService } from "./seller-verification-service.js";
 
 const db = openSqliteDatabase();
@@ -12,6 +14,8 @@ const core = new MarketplaceCore(db);
 const addresses = new AddressService(db);
 const catalog = new CatalogService(db);
 const categories = new CategoryService(db);
+const productCreator = new ProductCreateService(db);
+const publicCatalog = new PublicCatalogService(db);
 const sellerVerification = new SellerVerificationService(db);
 
 function sendJson(res, status, body) {
@@ -59,19 +63,22 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && url.pathname === "/v1/catalog/categories") {
-      return sendJson(res, 200, categories.listPublic());
+      return sendJson(res, 200, publicCatalog.listCategories());
     }
 
     if (req.method === "GET" && url.pathname === "/v1/catalog/products") {
-      return sendJson(res, 200, catalog.listPublished({
+      return sendJson(res, 200, publicCatalog.listProducts({
         limit: url.searchParams.get("limit") || 24,
         offset: url.searchParams.get("offset") || 0,
+        categorySlug: url.searchParams.get("category"),
+        amazingOnly: url.searchParams.get("amazing") === "1",
+        query: url.searchParams.get("q") || "",
       }));
     }
 
     const publicProductMatch = url.pathname.match(/^\/v1\/catalog\/products\/([^/]+)$/);
     if (req.method === "GET" && publicProductMatch) {
-      return sendJson(res, 200, catalog.getPublished(decodeURIComponent(publicProductMatch[1])));
+      return sendJson(res, 200, publicCatalog.getProduct(decodeURIComponent(publicProductMatch[1])));
     }
 
     if (req.method === "POST" && url.pathname === "/v1/auth/register") {
@@ -161,7 +168,7 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "POST" && url.pathname === "/v1/products") {
-      return sendJson(res, 201, core.createProduct(user.id, await readJson(req)));
+      return sendJson(res, 201, productCreator.create(user.id, await readJson(req)));
     }
     if (req.method === "GET" && url.pathname === "/v1/manage/products") {
       return sendJson(res, 200, catalog.listManaged(user.id));
