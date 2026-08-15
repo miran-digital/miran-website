@@ -6,9 +6,11 @@ import { MarketplaceCore } from "./core.js";
 import { migrateSqlite, openSqliteDatabase } from "./database.js";
 import { OrderQueryService } from "./order-query-service.js";
 import { PaymentService } from "./payment-service.js";
+import { S3PrivateObjectStorage } from "./private-object-storage.js";
 import { ProductCreateService } from "./product-create-service.js";
 import { ProductLifecycleService } from "./product-lifecycle-service.js";
 import { PublicCatalogService } from "./public-catalog-service.js";
+import { SellerDocumentUploadService } from "./seller-document-upload-service.js";
 import { SellerVerificationService } from "./seller-verification-service.js";
 import { StorefrontCmsService } from "./storefront-cms-service.js";
 import { ZarinpalClient } from "./zarinpal-client.js";
@@ -25,10 +27,16 @@ const zarinpal = new ZarinpalClient({
   sandbox: process.env.ZARINPAL_SANDBOX === "true",
 });
 const payments = new PaymentService(db, zarinpal, { reservationMinutes: 30 });
+const privateStorage = new S3PrivateObjectStorage();
 const productCreator = new ProductCreateService(db);
 const productLifecycle = new ProductLifecycleService(db);
 const publicCatalog = new PublicCatalogService(db);
 const sellerVerification = new SellerVerificationService(db);
+const sellerDocumentUploads = new SellerDocumentUploadService(
+  db,
+  sellerVerification,
+  privateStorage,
+);
 const storefrontCms = new StorefrontCmsService(db);
 const publicSiteUrl = String(process.env.MIRAN_PUBLIC_URL || "https://almiran.ir").replace(/\/+$/, "");
 
@@ -150,6 +158,20 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/v1/sellers/documents") {
       return sendJson(res, 201, sellerVerification.addDocument(user.id, await readJson(req)));
     }
+    if (req.method === "POST" && url.pathname === "/v1/sellers/documents/upload-ticket") {
+      return sendJson(
+        res,
+        201,
+        sellerDocumentUploads.issueUploadTicket(user.id, await readJson(req)),
+      );
+    }
+    if (req.method === "POST" && url.pathname === "/v1/sellers/documents/complete") {
+      return sendJson(
+        res,
+        201,
+        await sellerDocumentUploads.completeUpload(user.id, await readJson(req)),
+      );
+    }
     if (req.method === "POST" && url.pathname === "/v1/sellers/guarantees") {
       return sendJson(res, 201, sellerVerification.addGuarantee(user.id, await readJson(req)));
     }
@@ -204,6 +226,18 @@ const server = createServer(async (req, res) => {
       if (body.status === "REJECTED") return sendJson(res, 200, sellerVerification.reject(user.id, sellerId, body.reason));
       if (body.status === "SUSPENDED") return sendJson(res, 200, sellerVerification.suspend(user.id, sellerId, body.reason));
       throw Object.assign(new Error("Invalid seller review status"), { code: "INVALID_INPUT" });
+    }
+
+    const documentDownloadMatch = url.pathname.match(/^\/v1\/admin\/seller-documents\/([^/]+)\/download-ticket$/);
+    if (req.method === "GET" && documentDownloadMatch) {
+      return sendJson(
+        res,
+        200,
+        sellerDocumentUploads.issueAdminDownloadTicket(
+          user.id,
+          decodeURIComponent(documentDownloadMatch[1]),
+        ),
+      );
     }
 
     const documentReviewMatch = url.pathname.match(/^\/v1\/admin\/seller-documents\/([^/]+)\/review$/);
@@ -306,6 +340,9 @@ const server = createServer(async (req, res) => {
       : error.code === "NOT_FOUND" ? 404
       : error.code === "OUT_OF_STOCK" || error.code === "CONFLICT" ? 409
       : error.code === "PAYLOAD_TOO_LARGE" ? 413
+      : error.code === "STORAGE_NOT_CONFIGURED" ? 503
+      : error.code === "STORAGE_OBJECT_NOT_FOUND" || error.code === "STORAGE_OBJECT_MISMATCH" ? 409
+      : error.code === "STORAGE_CONFIG_INVALID" ? 500
       : error.code === "PAYMENT_NOT_CONFIGURED" ? 503
       : error.code === "PAYMENT_PROVIDER_ERROR" || error.code === "PAYMENT_VERIFICATION_FAILED" ? 502
       : 400;
