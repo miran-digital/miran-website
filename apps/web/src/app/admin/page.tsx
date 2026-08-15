@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AdminPage } from "@/features/admin/admin-page";
+import { RealProductManager } from "@/features/admin/real-product-manager";
 import { getCatalogCategories } from "@/features/catalog/catalog-data";
 import { getCurrentUser } from "@/lib/auth/current-user";
 
@@ -16,5 +17,10 @@ export default async function AdminRoute() {
   if (user.role !== "ADMIN") redirect("/account?error=admin-required");
 
   const categories = await getCatalogCategories();
-  return <AdminPage categories={categories} />;
+  return (
+    <>
+      <RealProductManager />
+      <AdminPage categories={categories} />
+    </>
+  );
 }
