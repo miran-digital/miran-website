@@ -5,6 +5,7 @@ import { CategoryService } from "./category-service.js";
 import { MarketplaceCore } from "./core.js";
 import { migrateSqlite, openSqliteDatabase } from "./database.js";
 import { ProductCreateService } from "./product-create-service.js";
+import { ProductLifecycleService } from "./product-lifecycle-service.js";
 import { PublicCatalogService } from "./public-catalog-service.js";
 import { SellerVerificationService } from "./seller-verification-service.js";
 import { StorefrontCmsService } from "./storefront-cms-service.js";
@@ -16,6 +17,7 @@ const addresses = new AddressService(db);
 const catalog = new CatalogService(db);
 const categories = new CategoryService(db);
 const productCreator = new ProductCreateService(db);
+const productLifecycle = new ProductLifecycleService(db);
 const publicCatalog = new PublicCatalogService(db);
 const sellerVerification = new SellerVerificationService(db);
 const storefrontCms = new StorefrontCmsService(db);
@@ -221,6 +223,12 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 200, catalog.setPublished(user.id, decodeURIComponent(publishMatch[1]), body.published !== false));
     }
 
+    const archiveMatch = url.pathname.match(/^\/v1\/products\/([^/]+)\/archive$/);
+    if (req.method === "PATCH" && archiveMatch) {
+      const body = await readJson(req);
+      return sendJson(res, 200, productLifecycle.setArchived(user.id, decodeURIComponent(archiveMatch[1]), body.archived !== false));
+    }
+
     const inventoryMatch = url.pathname.match(/^\/v1\/products\/([^/]+)\/inventory$/);
     if (req.method === "PATCH" && inventoryMatch) {
       const body = await readJson(req);
@@ -230,6 +238,15 @@ const server = createServer(async (req, res) => {
     const mediaMatch = url.pathname.match(/^\/v1\/products\/([^/]+)\/media$/);
     if (req.method === "POST" && mediaMatch) {
       return sendJson(res, 201, catalog.addMedia(user.id, decodeURIComponent(mediaMatch[1]), await readJson(req)));
+    }
+
+    const mediaDeleteMatch = url.pathname.match(/^\/v1\/products\/([^/]+)\/media\/([^/]+)$/);
+    if (req.method === "DELETE" && mediaDeleteMatch) {
+      return sendJson(res, 200, productLifecycle.removeMedia(
+        user.id,
+        decodeURIComponent(mediaDeleteMatch[1]),
+        decodeURIComponent(mediaDeleteMatch[2]),
+      ));
     }
 
     if (req.method === "POST" && url.pathname === "/v1/orders") {
