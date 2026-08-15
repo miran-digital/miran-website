@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { AddressService } from "./address-service.js";
+import { CatalogService } from "./catalog-service.js";
 import { MarketplaceCore } from "./core.js";
 import { migrateSqlite, openSqliteDatabase } from "./database.js";
 
@@ -7,6 +8,7 @@ const db = openSqliteDatabase();
 migrateSqlite(db);
 const core = new MarketplaceCore(db);
 const addresses = new AddressService(db);
+const catalog = new CatalogService(db);
 
 function sendJson(res, status, body) {
   if (status === 204) {
@@ -54,6 +56,28 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true, service: "marketplace-core" });
     }
 
+    if (req.method === "GET" && url.pathname === "/v1/catalog/products") {
+      return sendJson(
+        res,
+        200,
+        catalog.listPublished({
+          limit: url.searchParams.get("limit") || 24,
+          offset: url.searchParams.get("offset") || 0,
+        }),
+      );
+    }
+
+    const publicProductMatch = url.pathname.match(
+      /^\/v1\/catalog\/products\/([^/]+)$/,
+    );
+    if (req.method === "GET" && publicProductMatch) {
+      return sendJson(
+        res,
+        200,
+        catalog.getPublished(decodeURIComponent(publicProductMatch[1])),
+      );
+    }
+
     if (req.method === "POST" && url.pathname === "/v1/auth/register") {
       const body = await readJson(req);
       return sendJson(
@@ -80,7 +104,9 @@ const server = createServer(async (req, res) => {
     }
 
     if (url.pathname === "/v1/addresses") {
-      if (req.method === "GET") return sendJson(res, 200, addresses.list(user.id));
+      if (req.method === "GET") {
+        return sendJson(res, 200, addresses.list(user.id));
+      }
       if (req.method === "POST") {
         return sendJson(res, 201, core.addAddress(user.id, await readJson(req)));
       }
@@ -117,6 +143,67 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/v1/products") {
       return sendJson(res, 201, core.createProduct(user.id, await readJson(req)));
     }
+
+    if (req.method === "GET" && url.pathname === "/v1/manage/products") {
+      return sendJson(res, 200, catalog.listManaged(user.id));
+    }
+
+    const productMatch = url.pathname.match(/^\/v1\/products\/([^/]+)$/);
+    if (req.method === "PATCH" && productMatch) {
+      return sendJson(
+        res,
+        200,
+        catalog.updateProduct(
+          user.id,
+          decodeURIComponent(productMatch[1]),
+          await readJson(req),
+        ),
+      );
+    }
+
+    const publishMatch = url.pathname.match(/^\/v1\/products\/([^/]+)\/publish$/);
+    if (req.method === "PATCH" && publishMatch) {
+      const body = await readJson(req);
+      return sendJson(
+        res,
+        200,
+        catalog.setPublished(
+          user.id,
+          decodeURIComponent(publishMatch[1]),
+          body.published !== false,
+        ),
+      );
+    }
+
+    const inventoryMatch = url.pathname.match(
+      /^\/v1\/products\/([^/]+)\/inventory$/,
+    );
+    if (req.method === "PATCH" && inventoryMatch) {
+      const body = await readJson(req);
+      return sendJson(
+        res,
+        200,
+        catalog.setInventory(
+          user.id,
+          decodeURIComponent(inventoryMatch[1]),
+          body.stockOnHand,
+        ),
+      );
+    }
+
+    const mediaMatch = url.pathname.match(/^\/v1\/products\/([^/]+)\/media$/);
+    if (req.method === "POST" && mediaMatch) {
+      return sendJson(
+        res,
+        201,
+        catalog.addMedia(
+          user.id,
+          decodeURIComponent(mediaMatch[1]),
+          await readJson(req),
+        ),
+      );
+    }
+
     if (req.method === "POST" && url.pathname === "/v1/orders") {
       return sendJson(res, 201, core.createOrder(user.id, await readJson(req)));
     }
