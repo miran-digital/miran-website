@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { Container } from "@miran/ui";
-import { getCatalogCategories } from "@/features/catalog/catalog-data";
+import { getRealCatalogCategories } from "@/features/catalog/real-catalog-data";
 import styles from "@/features/catalog/discovery.module.css";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "دسته‌بندی‌ها",
@@ -10,7 +12,7 @@ export const metadata: Metadata = {
 };
 
 export default async function CategoriesPage() {
-  const categories = await getCatalogCategories();
+  const categories = await getRealCatalogCategories();
   return (
     <main className={styles.page}>
       <Container size="wide">
@@ -22,17 +24,17 @@ export default async function CategoriesPage() {
         <header className={styles.header}>
           <p>کشف محصولات</p>
           <h1>همه دسته‌بندی‌ها</h1>
-          <p>از مسیر روشن و منظم، کالای مورد نیاز خود را پیدا کنید.</p>
+          <p>دسته‌هایی که مدیر منتشر کرده است مستقیماً از Database نمایش داده می‌شوند.</p>
         </header>
         <div className={styles.categoryGrid}>
           {categories.map((category) => (
             <a
               key={category.slug}
               className={styles.categoryCard}
-              href={`/category/${category.slug}`}
+              href={`/category/${encodeURIComponent(category.slug)}`}
             >
               <h2>{category.name}</h2>
-              <p>{category.description}</p>
+              <p>{category.description || "مشاهده محصولات این دسته"}</p>
             </a>
           ))}
         </div>
