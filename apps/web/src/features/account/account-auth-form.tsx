@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { AddressBook } from "./address-book";
+import { OrderHistory } from "./order-history";
 
 type User = { id: string; email: string; role: string };
 type Mode = "login" | "register";
@@ -93,6 +94,7 @@ export function AccountAuthForm() {
         </button>
         {message ? <p role="status">{message}</p> : null}
         <AddressBook />
+        <OrderHistory />
       </div>
     );
   }
