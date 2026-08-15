@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { Container } from "@miran/ui";
+import { AccountAuthForm } from "@/features/account/account-auth-form";
 import styles from "./account.module.css";
 
 export const metadata: Metadata = {
   title: "حساب کاربری",
-  description: "ورود و مدیریت حساب Miran Shop.",
+  description: "ورود، ثبت‌نام و مدیریت حساب Miran Shop.",
   robots: { index: false, follow: false },
 };
 
@@ -17,41 +18,17 @@ export default function AccountPage() {
             <p>Miran Shop Account</p>
             <h1>خریدها و اطلاعات شما در یک جای امن</h1>
             <p>
-              پس از اتصال سرویس Identity، سفارش‌ها، نشانی‌ها، بازگشت کالا و
-              تنظیمات حساب از این بخش مدیریت می‌شوند.
+              ورود و ثبت‌نام به Backend واقعی Miran متصل است. سفارش‌ها، نشانی‌ها،
+              بازگشت کالا و تنظیمات حساب در مراحل بعدی همین حساب مدیریت می‌شوند.
             </p>
             <ul>
-              <li>پیگیری سفارش و ارسال</li>
+              <li>نشست امن و خروج واقعی</li>
               <li>مدیریت نشانی‌های تحویل</li>
-              <li>درخواست بازگشت و پشتیبانی</li>
+              <li>پیگیری سفارش و پشتیبانی</li>
             </ul>
           </section>
-          <section
-            className={styles.auth}
-            aria-labelledby="account-login-title"
-          >
-            <h2 id="account-login-title">ورود امن</h2>
-            <p>
-              ورود جعلی در Frontend ساخته نشده است. این فرم پس از اتصال Auth و
-              مدیریت نشست امن فعال می‌شود.
-            </p>
-            <label>
-              <span>ایمیل</span>
-              <input type="email" autoComplete="email" dir="ltr" disabled />
-            </label>
-            <label>
-              <span>رمز عبور</span>
-              <input
-                type="password"
-                autoComplete="current-password"
-                dir="ltr"
-                disabled
-              />
-            </label>
-            <button type="button" disabled>
-              ورود
-            </button>
-            <small>هیچ رمز عبوری در نسخه فعلی دریافت یا ذخیره نمی‌شود.</small>
+          <section className={styles.auth} aria-labelledby="account-login-title">
+            <AccountAuthForm />
           </section>
         </div>
       </Container>
