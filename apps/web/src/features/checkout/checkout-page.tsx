@@ -59,6 +59,14 @@ type CreatedOrder = {
   total_irr: number;
 };
 
+type PaymentStart = {
+  paymentId: string;
+  orderId: string;
+  authority: string;
+  redirectUrl: string;
+  reused: boolean;
+};
+
 function toman(irr: number) {
   return `${Math.round(irr / 10).toLocaleString("fa-IR")} تومان`;
 }
@@ -239,6 +247,37 @@ export function CheckoutPage() {
     }
   }
 
+  async function startPayment() {
+    if (!order || order.status !== "PENDING_PAYMENT") return;
+    setLoading(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/payments/zarinpal/start", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orderId: order.id }),
+      });
+      const data = (await response.json()) as {
+        payment?: PaymentStart;
+        message?: string;
+        error?: string;
+      };
+      if (!response.ok || !data.payment?.redirectUrl) {
+        setMessage(
+          data.error === "PAYMENT_NOT_CONFIGURED"
+            ? "درگاه زرین‌پال آماده است اما Merchant ID واقعی هنوز در Environment سرور تنظیم نشده است."
+            : data.message ?? "شروع پرداخت انجام نشد.",
+        );
+        return;
+      }
+      window.location.assign(data.payment.redirectUrl);
+    } catch {
+      setMessage("ارتباط با درگاه پرداخت برقرار نشد.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   if (!ready) {
     return (
       <main className={styles.page}>
@@ -276,7 +315,7 @@ export function CheckoutPage() {
           <p>Checkout Server-authoritative</p>
           <h1>تکمیل سفارش</h1>
           <p>
-            قیمت، تخفیف و موجودی این صفحه دوباره از Backend دریافت می‌شوند؛ قیمت ذخیره‌شده در مرورگر مبنای سفارش نیست.
+            قیمت، تخفیف و موجودی دوباره از Backend دریافت می‌شوند و پرداخت زرین‌پال فقط مبلغ ذخیره‌شده روی Order را Verify می‌کند.
           </p>
         </header>
 
@@ -293,7 +332,7 @@ export function CheckoutPage() {
             <ol className={styles.steps} aria-label="مراحل Checkout">
               <li data-active={step === "address"}>۱. نشانی</li>
               <li data-active={step === "delivery"}>۲. تحویل</li>
-              <li data-active={step === "review"}>۳. ثبت سفارش</li>
+              <li data-active={step === "review"}>۳. ثبت و پرداخت</li>
             </ol>
 
             <div className={styles.layout}>
@@ -321,9 +360,7 @@ export function CheckoutPage() {
                           />
                           <span>
                             <strong>{address.label}{address.is_default ? " — پیش‌فرض" : ""}</strong>
-                            <small>
-                              {address.full_name}، {address.province}، {address.city}، {address.address_line}، {address.postal_code}
-                            </small>
+                            <small>{address.full_name}، {address.province}، {address.city}، {address.address_line}، {address.postal_code}</small>
                           </span>
                         </label>
                       ))
@@ -338,11 +375,11 @@ export function CheckoutPage() {
                   <div className={styles.form}>
                     <div className={styles.sectionHeading}>
                       <h2>روش تحویل</h2>
-                      <p>هزینه و SLA نهایی بعداً از Logistics Service خوانده می‌شود؛ هنوز مبلغ ساختگی به Order اضافه نمی‌کنیم.</p>
+                      <p>هزینه و SLA نهایی بعداً از Logistics Service خوانده می‌شود؛ مبلغ ساختگی به Order اضافه نمی‌کنیم.</p>
                     </div>
                     <label className={styles.option}>
                       <input type="radio" name="delivery" value="standard" checked={delivery === "standard"} onChange={(event) => setDelivery(event.target.value)} />
-                      <span><strong>ارسال استاندارد</strong><small>قابل رهگیری؛ هزینه نهایی هنوز صفر فرض نمی‌شود و به Order اضافه نشده است.</small></span>
+                      <span><strong>ارسال استاندارد</strong><small>قابل رهگیری؛ هزینه نهایی بعد از اتصال Logistics.</small></span>
                     </label>
                     <label className={styles.option}>
                       <input type="radio" name="delivery" value="priority" checked={delivery === "priority"} onChange={(event) => setDelivery(event.target.value)} />
@@ -358,8 +395,8 @@ export function CheckoutPage() {
                 {step === "review" ? (
                   <div className={styles.review}>
                     <div className={styles.sectionHeading}>
-                      <h2>مرور و رزرو موجودی</h2>
-                      <p>با این دکمه Order واقعی در وضعیت PENDING_PAYMENT ساخته می‌شود؛ هنوز هیچ پرداختی انجام نمی‌شود.</p>
+                      <h2>مرور، رزرو موجودی و پرداخت</h2>
+                      <p>ابتدا Order واقعی ساخته می‌شود؛ سپس زرین‌پال برای همان Order و همان مبلغ Database شروع می‌شود.</p>
                     </div>
 
                     {selectedAddress ? (
@@ -388,6 +425,11 @@ export function CheckoutPage() {
                         <p>وضعیت: {order.status}</p>
                         <p>مبلغ قابل پرداخت: {toman(order.total_irr)}</p>
                         <p>موجودی برای این سفارش رزرو شده است؛ سبد تا تأیید پرداخت پاک نمی‌شود.</p>
+                        {order.status === "PENDING_PAYMENT" ? (
+                          <button type="button" disabled={loading} onClick={() => void startPayment()}>
+                            {loading ? "در حال اتصال به زرین‌پال…" : "پرداخت امن با زرین‌پال"}
+                          </button>
+                        ) : null}
                       </div>
                     ) : (
                       <button type="button" disabled={!canCreateOrder} onClick={() => void createOrder()}>
@@ -396,8 +438,8 @@ export function CheckoutPage() {
                     )}
 
                     <div className={styles.paymentBoundary} role="note">
-                      <strong>درگاه پرداخت هنوز فعال نشده است</strong>
-                      <p>مرحله بعد، اتصال Provider واقعی و Verify Callback است. هیچ پرداخت آزمایشی به‌عنوان پرداخت موفق ثبت نمی‌شود.</p>
+                      <strong>پرداخت فقط پس از Verify موفق ثبت می‌شود</strong>
+                      <p>بازگشت از درگاه به‌تنهایی کافی نیست؛ Backend Authority و مبلغ Order را دوباره با زرین‌پال Verify می‌کند.</p>
                     </div>
                   </div>
                 ) : null}
@@ -410,9 +452,7 @@ export function CheckoutPage() {
                   {resolvedLines.map((line) => (
                     <li key={line.productId}>
                       <span>{line.product?.title ?? line.productId} × {line.quantity.toLocaleString("fa-IR")}</span>
-                      <strong>
-                        {line.product ? toman(line.product.pricing.finalIrr * line.quantity) : "نامعتبر"}
-                      </strong>
+                      <strong>{line.product ? toman(line.product.pricing.finalIrr * line.quantity) : "نامعتبر"}</strong>
                     </li>
                   ))}
                 </ul>
@@ -421,7 +461,7 @@ export function CheckoutPage() {
                   <strong>{toman(totals.finalIrr)}</strong>
                 </div>
                 {totals.discountIrr > 0 ? <p>سود شما از تخفیف: {toman(totals.discountIrr)}</p> : null}
-                <p>قیمت نهایی هنگام ساخت Order دوباره داخل Backend محاسبه می‌شود.</p>
+                <p>قیمت نهایی هنگام ساخت Order و Verify پرداخت از Database خوانده می‌شود.</p>
               </aside>
             </div>
           </>
