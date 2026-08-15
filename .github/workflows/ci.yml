@@ -29,6 +29,7 @@ jobs:
           node --check services/marketplace-core/src/address-service.js
           node --check services/marketplace-core/src/catalog-service.js
           node --check services/marketplace-core/src/server.js
+          node --check services/marketplace-core/scripts/bootstrap-admin.js
           node --check services/marketplace-core/tests/core.test.js
           node --check services/marketplace-core/tests/address.test.js
           node --check services/marketplace-core/tests/catalog.test.js
