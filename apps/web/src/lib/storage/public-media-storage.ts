@@ -226,7 +226,9 @@ export async function verifyPublicMediaObject(input: {
     throw new MediaStorageError("STORAGE_OBJECT_MISMATCH", "Uploaded media could not be verified");
   }
   const length = Number(response.headers.get("content-length"));
-  const type = String(response.headers.get("content-type") || "").split(";", 1)[0].trim().toLowerCase();
+  const type = (String(response.headers.get("content-type") || "").split(";", 1)[0] ?? "")
+    .trim()
+    .toLowerCase();
   const digest = String(response.headers.get("x-amz-meta-sha256") || "").trim().toLowerCase();
   if (
     !Number.isSafeInteger(length) ||
