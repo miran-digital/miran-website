@@ -5,11 +5,34 @@ import { Container } from "@miran/ui";
 import { createDefaultAdminState, getAdminState, type AdminState } from "./admin-store";
 import styles from "./real-product-manager.module.css";
 
+type UploadTicket = {
+  storageKey: string;
+  mediaType: "IMAGE";
+  mimeType: string;
+  sizeBytes: number;
+  sha256: string;
+  sortOrder: number;
+  isPrimary: boolean;
+  uploadUrl: string;
+  method: "PUT";
+  headers: Record<string, string>;
+};
+
+const legacyImageTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
+
+async function sha256Hex(blob: Blob) {
+  const digest = await crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
 export function LegacyPreviewImportManager() {
   const [preview, setPreview] = useState<AdminState>(createDefaultAdminState);
   const [ready, setReady] = useState(false);
   const [pricesToman, setPricesToman] = useState<Record<string, string>>({});
-  const [imported, setImported] = useState<Record<string, boolean>>({});
+  const [importedProductIds, setImportedProductIds] = useState<Record<string, string>>({});
+  const [imageMigrated, setImageMigrated] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -89,14 +112,108 @@ export function LegacyPreviewImportManager() {
         setMessage(data.message ?? `انتقال «${product.title}» انجام نشد.`);
         return;
       }
-      setImported((current) => ({ ...current, [product.id]: true }));
+      setImportedProductIds((current) => ({
+        ...current,
+        [product.id]: data.result!.product.id,
+      }));
       setMessage(
         data.result.alreadyImported
-          ? `«${product.title}» قبلاً منتقل شده بود؛ Duplicate ساخته نشد.`
-          : `«${product.title}» به‌صورت Draft با قیمت واقعی وارد Database شد${data.result.categoryMatched === false ? "؛ دسته قدیمی پیدا نشد و باید در Product Manager انتخاب شود" : ""}. تصویر Preview هنوز در LocalStorage حفظ شده و خودکار به رسانه عمومی تبدیل نشده است.`,
+          ? `«${product.title}» قبلاً منتقل شده بود؛ Duplicate ساخته نشد و شناسه محصول واقعی بازیابی شد.`
+          : `«${product.title}» به‌صورت Draft با قیمت واقعی وارد Database شد${data.result.categoryMatched === false ? "؛ دسته قدیمی پیدا نشد و باید در Product Manager انتخاب شود" : ""}. اگر تصویر Preview دارد، اکنون می‌توانید آن را جداگانه به Media Storage واقعی منتقل کنید.`,
       );
     } catch {
       setMessage(`انتقال «${product.title}» انجام نشد.`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function migrateImage(product: AdminState["products"][number]) {
+    const realProductId = importedProductIds[product.id];
+    if (!realProductId || !product.imageDataUrl) return;
+
+    setLoading(true);
+    setMessage("در حال تبدیل تصویر Preview به رسانه واقعی…");
+    try {
+      const blobResponse = await fetch(product.imageDataUrl);
+      if (!blobResponse.ok) throw new Error("invalid-data-url");
+      const blob = await blobResponse.blob();
+      if (!legacyImageTypes.has(blob.type)) {
+        setMessage("نوع تصویر قدیمی برای انتقال مستقیم پشتیبانی نمی‌شود.");
+        return;
+      }
+      if (blob.size <= 0 || blob.size > 10_000_000) {
+        setMessage("حجم تصویر قدیمی برای Media Storage معتبر نیست.");
+        return;
+      }
+      const sha256 = await sha256Hex(blob);
+      const ticketResponse = await fetch("/api/admin/products", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "media-upload-ticket",
+          id: realProductId,
+          data: {
+            mediaType: "IMAGE",
+            mimeType: blob.type,
+            sizeBytes: blob.size,
+            sha256,
+            sortOrder: 0,
+            isPrimary: true,
+          },
+        }),
+      });
+      const ticketData = (await ticketResponse.json()) as {
+        result?: UploadTicket;
+        error?: string;
+        message?: string;
+      };
+      if (!ticketResponse.ok || !ticketData.result) {
+        setMessage(
+          ticketData.error === "STORAGE_NOT_CONFIGURED"
+            ? "Media Storage هنوز روی Production تنظیم نشده است؛ تصویر Preview همچنان دست‌نخورده در مرورگر باقی می‌ماند."
+            : ticketData.message ?? "مجوز انتقال تصویر ساخته نشد.",
+        );
+        return;
+      }
+      const ticket = ticketData.result;
+      const uploadResponse = await fetch(ticket.uploadUrl, {
+        method: ticket.method,
+        headers: ticket.headers,
+        body: blob,
+      });
+      if (!uploadResponse.ok) {
+        setMessage("ارسال تصویر قدیمی به Media Storage انجام نشد؛ نسخه Preview حذف نشده است.");
+        return;
+      }
+
+      const completeResponse = await fetch("/api/admin/products", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "media-upload-complete",
+          id: realProductId,
+          data: {
+            storageKey: ticket.storageKey,
+            mediaType: ticket.mediaType,
+            mimeType: ticket.mimeType,
+            sizeBytes: ticket.sizeBytes,
+            sha256: ticket.sha256,
+            sortOrder: ticket.sortOrder,
+            isPrimary: true,
+          },
+        }),
+      });
+      const completeData = (await completeResponse.json()) as { result?: unknown; message?: string };
+      if (!completeResponse.ok || !completeData.result) {
+        setMessage(completeData.message ?? "ثبت نهایی تصویر قدیمی انجام نشد؛ Preview هنوز حفظ شده است.");
+        return;
+      }
+
+      setImageMigrated((current) => ({ ...current, [product.id]: true }));
+      setMessage(`تصویر «${product.title}» Verify شد و به‌عنوان تصویر اصلی محصول واقعی ثبت شد. نسخه Preview هنوز حذف نشده است.`);
+    } catch {
+      setMessage("انتقال تصویر Preview کامل نشد؛ هیچ داده قدیمی حذف نشد.");
     } finally {
       setLoading(false);
     }
@@ -117,7 +234,7 @@ export function LegacyPreviewImportManager() {
             <p>Controlled Migration</p>
             <h2 id="legacy-preview-import-title">انتقال امن اطلاعات Preview قدیمی</h2>
             <p className={styles.note}>
-              اطلاعات LocalStorage حذف نمی‌شود. پیام‌ها، بنرها و وضعیت بخش‌ها بدون Duplicate منتقل می‌شوند. محصول فقط با قیمت واقعی تومان و در وضعیت Draft منتقل می‌شود؛ قیمت Mock و تصویر Data URL قدیمی هرگز مبنای فروش قرار نمی‌گیرند.
+              اطلاعات LocalStorage حذف نمی‌شود. پیام‌ها، بنرها و وضعیت بخش‌ها بدون Duplicate منتقل می‌شوند. محصول فقط با قیمت واقعی تومان و در وضعیت Draft منتقل می‌شود؛ قیمت Mock هیچ‌وقت مبنای فروش قرار نمی‌گیرد. تصویر قدیمی نیز فقط پس از ساخت محصول واقعی و Verify شدن در Media Storage منتقل می‌شود.
             </p>
           </div>
 
@@ -134,41 +251,53 @@ export function LegacyPreviewImportManager() {
           </div>
 
           <div className={styles.grid}>
-            {preview.products.map((product) => (
-              <article className={styles.card} key={product.id}>
-                <h3>{product.title}</h3>
-                <p className={styles.meta}>{product.brand} · {product.category}</p>
-                <p className={styles.note}>
-                  عدد قیمت Preview: {product.priceMinor.toLocaleString("fa-IR")} — این عدد عمداً در Import استفاده نمی‌شود.
-                </p>
-                {product.imageDataUrl ? (
-                  <p className={styles.note}>تصویر قدیمی روی همین مرورگر حفظ شده و هنوز به Media Storage منتقل نشده است.</p>
-                ) : null}
-                <label>
-                  قیمت واقعی به تومان
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={pricesToman[product.id] ?? ""}
-                    onChange={(event) =>
-                      setPricesToman((current) => ({
-                        ...current,
-                        [product.id]: event.target.value,
-                      }))
-                    }
-                    disabled={loading || imported[product.id]}
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={() => void importProduct(product)}
-                  disabled={loading || imported[product.id]}
-                >
-                  {imported[product.id] ? "منتقل شد" : "انتقال به‌صورت Draft"}
-                </button>
-              </article>
-            ))}
+            {preview.products.map((product) => {
+              const realProductId = importedProductIds[product.id];
+              return (
+                <article className={styles.card} key={product.id}>
+                  <h3>{product.title}</h3>
+                  <p className={styles.meta}>{product.brand} · {product.category}</p>
+                  <p className={styles.note}>
+                    عدد قیمت Preview: {product.priceMinor.toLocaleString("fa-IR")} — این عدد عمداً در Import استفاده نمی‌شود.
+                  </p>
+                  {product.imageDataUrl ? (
+                    <p className={styles.note}>تصویر قدیمی روی همین مرورگر حفظ شده است و فقط با دستور جداگانه به Media Storage منتقل می‌شود.</p>
+                  ) : null}
+                  <label>
+                    قیمت واقعی به تومان
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={pricesToman[product.id] ?? ""}
+                      onChange={(event) =>
+                        setPricesToman((current) => ({
+                          ...current,
+                          [product.id]: event.target.value,
+                        }))
+                      }
+                      disabled={loading || Boolean(realProductId)}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void importProduct(product)}
+                    disabled={loading || Boolean(realProductId)}
+                  >
+                    {realProductId ? "محصول Draft منتقل شد" : "انتقال به‌صورت Draft"}
+                  </button>
+                  {product.imageDataUrl && realProductId ? (
+                    <button
+                      type="button"
+                      onClick={() => void migrateImage(product)}
+                      disabled={loading || imageMigrated[product.id]}
+                    >
+                      {imageMigrated[product.id] ? "تصویر منتقل شد" : "انتقال تصویر قدیمی به Media Storage"}
+                    </button>
+                  ) : null}
+                </article>
+              );
+            })}
           </div>
 
           {message ? <p role="status">{message}</p> : null}
