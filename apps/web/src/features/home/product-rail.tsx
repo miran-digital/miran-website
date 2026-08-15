@@ -53,7 +53,7 @@ export function ProductRail({ section, tone = "default" }: ProductRailProps) {
                     />
                   }
                   price={product.price}
-                  locale="en-GB"
+                  locale="fa-IR"
                   media={
                     <div className={styles.media} aria-hidden="true">
                       {product.mediaLabel}
