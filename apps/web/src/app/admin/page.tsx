@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AdminPage } from "@/features/admin/admin-page";
+import { LegacyPreviewImportManager } from "@/features/admin/legacy-preview-import-manager";
 import { RealCategoryManager } from "@/features/admin/real-category-manager";
 import { RealOrderManager } from "@/features/admin/real-order-manager";
 import { RealProductManager } from "@/features/admin/real-product-manager";
@@ -28,6 +29,7 @@ export default async function AdminRoute() {
       <RealCategoryManager />
       <RealProductManager />
       <RealSellerVerificationManager />
+      <LegacyPreviewImportManager />
       <AdminPage categories={legacyCategories} />
     </>
   );
