@@ -22,3 +22,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm build
+      - name: Validate marketplace core syntax
+        run: |
+          node --check services/marketplace-core/src/database.js
+          node --check services/marketplace-core/src/core.js
+          node --check services/marketplace-core/src/server.js
+          node --check services/marketplace-core/tests/core.test.js
+      - name: Test marketplace core
+        run: node --test services/marketplace-core/tests/core.test.js
