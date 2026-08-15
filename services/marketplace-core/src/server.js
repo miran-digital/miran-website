@@ -4,6 +4,7 @@ import { CatalogService } from "./catalog-service.js";
 import { CategoryService } from "./category-service.js";
 import { MarketplaceCore } from "./core.js";
 import { migrateSqlite, openSqliteDatabase } from "./database.js";
+import { OrderQueryService } from "./order-query-service.js";
 import { ProductCreateService } from "./product-create-service.js";
 import { ProductLifecycleService } from "./product-lifecycle-service.js";
 import { PublicCatalogService } from "./public-catalog-service.js";
@@ -16,6 +17,7 @@ const core = new MarketplaceCore(db);
 const addresses = new AddressService(db);
 const catalog = new CatalogService(db);
 const categories = new CategoryService(db);
+const orders = new OrderQueryService(db);
 const productCreator = new ProductCreateService(db);
 const productLifecycle = new ProductLifecycleService(db);
 const publicCatalog = new PublicCatalogService(db);
@@ -170,6 +172,14 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 200, sellerVerification.listManaged(user.id));
     }
 
+    if (req.method === "GET" && url.pathname === "/v1/admin/orders") {
+      return sendJson(res, 200, orders.listManaged(user.id, {
+        limit: url.searchParams.get("limit") || 100,
+        offset: url.searchParams.get("offset") || 0,
+        status: url.searchParams.get("status"),
+      }));
+    }
+
     const sellerReviewMatch = url.pathname.match(/^\/v1\/admin\/sellers\/([^/]+)\/review$/);
     if (req.method === "PATCH" && sellerReviewMatch) {
       const body = await readJson(req);
@@ -247,6 +257,18 @@ const server = createServer(async (req, res) => {
         decodeURIComponent(mediaDeleteMatch[1]),
         decodeURIComponent(mediaDeleteMatch[2]),
       ));
+    }
+
+    if (req.method === "GET" && url.pathname === "/v1/orders") {
+      return sendJson(res, 200, orders.listMine(user.id, {
+        limit: url.searchParams.get("limit") || 50,
+        offset: url.searchParams.get("offset") || 0,
+      }));
+    }
+
+    const orderMatch = url.pathname.match(/^\/v1\/orders\/([^/]+)$/);
+    if (req.method === "GET" && orderMatch) {
+      return sendJson(res, 200, orders.getMine(user.id, decodeURIComponent(orderMatch[1])));
     }
 
     if (req.method === "POST" && url.pathname === "/v1/orders") {
