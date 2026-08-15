@@ -2,31 +2,27 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { CategoryListing } from "@/features/catalog/category-listing";
 import {
-  getCatalogCategory,
-  getCatalogCategorySlugs,
-  getCatalogListing,
-} from "@/features/catalog/catalog-data";
+  getRealCatalogCategory,
+  getRealCatalogListing,
+} from "@/features/catalog/real-catalog-data";
 import {
   parseCategoryListingState,
   toCatalogListingQuery,
   type ListingSearchParams,
 } from "@/features/catalog/listing-state";
 
+export const dynamic = "force-dynamic";
+
 type CategoryPageProps = {
   params: Promise<{ slug: string }>;
   searchParams: Promise<ListingSearchParams>;
 };
 
-export async function generateStaticParams() {
-  const slugs = await getCatalogCategorySlugs();
-  return slugs.map((slug) => ({ slug }));
-}
-
 export async function generateMetadata({
   params,
 }: Pick<CategoryPageProps, "params">): Promise<Metadata> {
   const { slug } = await params;
-  const category = await getCatalogCategory(slug);
+  const category = await getRealCatalogCategory(slug);
   if (!category) return {};
 
   return {
@@ -42,7 +38,7 @@ export default async function CategoryPage({
 }: CategoryPageProps) {
   const [{ slug }, rawSearchParams] = await Promise.all([params, searchParams]);
   const state = parseCategoryListingState(rawSearchParams);
-  const listing = await getCatalogListing(toCatalogListingQuery(slug, state));
+  const listing = await getRealCatalogListing(toCatalogListingQuery(slug, state));
   if (!listing) notFound();
 
   return (
