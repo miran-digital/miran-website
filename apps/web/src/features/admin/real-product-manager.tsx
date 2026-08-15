@@ -272,6 +272,36 @@ export function RealProductManager() {
     }
   }
 
+  async function removeMedia(product: ManagedProduct, media: ManagedMedia) {
+    if (!window.confirm(`رسانه «${media.url}» از محصول «${product.title}» حذف شود؟`)) return;
+    setLoading(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/admin/products", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ productId: product.id, mediaId: media.id }),
+      });
+      const data = (await response.json()) as { message?: string };
+      if (!response.ok) {
+        setMessage(data.message ?? "حذف رسانه انجام نشد.");
+        return;
+      }
+      await load();
+      setMessage("رسانه حذف شد؛ اگر تصویر اصلی بود، تصویر بعدی به‌صورت امن Primary شد.");
+    } catch {
+      setMessage("حذف رسانه انجام نشد.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function toggleArchive(product: ManagedProduct) {
+    const archived = product.status !== "ARCHIVED";
+    if (archived && !window.confirm(`محصول «${product.title}» آرشیو و از ویترین مخفی شود؟ تاریخچه سفارش حذف نمی‌شود.`)) return;
+    await patch({ id: product.id, action: "archive", archived });
+  }
+
   return (
     <section className={styles.section} aria-labelledby="real-products-title">
       <Container size="wide">
@@ -280,7 +310,7 @@ export function RealProductManager() {
             <p>Database-backed Catalog</p>
             <h2 id="real-products-title">محصولات واقعی Miran</h2>
             <p className={styles.note}>
-              قیمت فرم تومان است و در Database به عدد صحیح ریال ذخیره می‌شود. Category، Brand، Discount Schedule و Media همین داده‌ای هستند که ویترین واقعی می‌خواند.
+              قیمت فرم تومان است و در Database به عدد صحیح ریال ذخیره می‌شود. حذف محصول به‌صورت Archive انجام می‌شود تا تاریخچه سفارش و حسابداری از بین نرود.
             </p>
           </div>
 
@@ -332,7 +362,9 @@ export function RealProductManager() {
               {products.map((product) => (
                 <article className={styles.card} key={product.id}>
                   <h3>{product.title}</h3>
-                  <p className={styles.status}>{product.status === "PUBLISHED" ? "منتشرشده" : product.status}</p>
+                  <p className={styles.status}>
+                    {product.status === "PUBLISHED" ? "منتشرشده" : product.status === "ARCHIVED" ? "آرشیوشده" : "Draft"}
+                  </p>
                   <p>{toman(product.pricing.finalIrr)}</p>
                   <p className={styles.meta}>
                     {product.brand || "بدون برند"} — {product.categoryName || "بدون دسته"}
@@ -365,7 +397,7 @@ export function RealProductManager() {
                     <label>شروع<input name="discountStartsAt" type="datetime-local" defaultValue={localDateTime(product.discountStartsAt)} /></label>
                     <label>پایان<input name="discountEndsAt" type="datetime-local" defaultValue={localDateTime(product.discountEndsAt)} /></label>
                     <label><input name="isAmazing" type="checkbox" defaultChecked={product.isAmazing} /> پیشنهاد شگفت‌انگیز</label>
-                    <button type="submit" disabled={loading}>ذخیره قیمت و دسته</button>
+                    <button type="submit" disabled={loading || product.status === "ARCHIVED"}>ذخیره قیمت و دسته</button>
                   </form>
 
                   <form className={styles.form} onSubmit={(event) => void addMedia(event, product.id)}>
@@ -380,16 +412,25 @@ export function RealProductManager() {
                     <label>URL رسانه<input name="url" dir="ltr" placeholder="/media/product.webp یا https://..." required /></label>
                     <label>ترتیب<input name="sortOrder" type="number" min="0" step="1" defaultValue="0" /></label>
                     <label><input name="isPrimary" type="checkbox" /> تصویر اصلی</label>
-                    <button type="submit" disabled={loading}>اتصال رسانه</button>
+                    <button type="submit" disabled={loading || product.status === "ARCHIVED"}>اتصال رسانه</button>
                   </form>
                   {product.media.length > 0 ? (
                     <ul>
-                      {product.media.map((media) => <li key={media.id}>{media.media_type} — <bdi dir="ltr">{media.url}</bdi>{media.is_primary ? " — اصلی" : ""}</li>)}
+                      {product.media.map((media) => (
+                        <li key={media.id}>
+                          {media.media_type} — <bdi dir="ltr">{media.url}</bdi>{media.is_primary ? " — اصلی" : ""}{" "}
+                          <button type="button" disabled={loading} onClick={() => void removeMedia(product, media)}>حذف رسانه</button>
+                        </li>
+                      ))}
                     </ul>
                   ) : null}
 
                   <div className={styles.actions}>
-                    <button type="button" disabled={loading} onClick={() => void patch({ id: product.id, action: "publish", published: product.status !== "PUBLISHED" })}>
+                    <button
+                      type="button"
+                      disabled={loading || product.status === "ARCHIVED"}
+                      onClick={() => void patch({ id: product.id, action: "publish", published: product.status !== "PUBLISHED" })}
+                    >
                       {product.status === "PUBLISHED" ? "برگرداندن به Draft" : "انتشار"}
                     </button>
                     <input
@@ -398,6 +439,7 @@ export function RealProductManager() {
                       min={product.stockReserved}
                       step="1"
                       defaultValue={product.stockOnHand}
+                      disabled={product.status === "ARCHIVED"}
                       onBlur={(event) => {
                         const value = Number(event.currentTarget.value);
                         if (Number.isSafeInteger(value) && value !== product.stockOnHand) {
@@ -405,6 +447,9 @@ export function RealProductManager() {
                         }
                       }}
                     />
+                    <button type="button" disabled={loading} onClick={() => void toggleArchive(product)}>
+                      {product.status === "ARCHIVED" ? "بازگردانی به Draft" : "آرشیو امن"}
+                    </button>
                     {product.status === "PUBLISHED" ? <a href={`/product/${encodeURIComponent(product.slug)}`}>مشاهده محصول</a> : null}
                   </div>
                 </article>
