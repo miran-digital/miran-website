@@ -16,6 +16,7 @@ test("migrations are ordered, recorded and idempotent", () => {
     "005_private_storage.sql",
     "006_legacy_preview_import.sql",
     "007_product_media_storage.sql",
+    "008_banner_media_storage.sql",
   ]);
 
   const productColumns = db.prepare("PRAGMA table_info(products)").all().map((row) => row.name);
@@ -46,6 +47,10 @@ test("migrations are ordered, recorded and idempotent", () => {
   const bannerColumns = db.prepare("PRAGMA table_info(storefront_banners)").all().map((row) => row.name);
   assert.ok(headerColumns.includes("legacy_key"));
   assert.ok(bannerColumns.includes("legacy_key"));
+  assert.ok(bannerColumns.includes("storage_key"));
+  assert.ok(bannerColumns.includes("mime_type"));
+  assert.ok(bannerColumns.includes("size_bytes"));
+  assert.ok(bannerColumns.includes("sha256"));
 
   const mediaColumns = db.prepare("PRAGMA table_info(product_media)").all().map((row) => row.name);
   assert.ok(mediaColumns.includes("storage_key"));
