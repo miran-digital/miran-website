@@ -42,7 +42,7 @@ async function requireManagedBanner(token: string, id: string) {
     headers: { authorization: `Bearer ${token}` },
   });
   if (!cms.banners.some((banner) => banner.id === id)) {
-    throw new ApiError(404, "NOT_FOUND", "Banner not found");
+    throw new ApiError("Banner not found", 404, "NOT_FOUND");
   }
 }
 
