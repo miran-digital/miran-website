@@ -24,14 +24,6 @@ jobs:
       - run: pnpm build
       - name: Validate marketplace core syntax
         run: |
-          node --check services/marketplace-core/src/database.js
-          node --check services/marketplace-core/src/core.js
-          node --check services/marketplace-core/src/address-service.js
-          node --check services/marketplace-core/src/catalog-service.js
-          node --check services/marketplace-core/src/server.js
-          node --check services/marketplace-core/scripts/bootstrap-admin.js
-          node --check services/marketplace-core/tests/core.test.js
-          node --check services/marketplace-core/tests/address.test.js
-          node --check services/marketplace-core/tests/catalog.test.js
+          find services/marketplace-core/src services/marketplace-core/tests services/marketplace-core/scripts -name '*.js' -print0 | xargs -0 -n1 node --check
       - name: Test marketplace core
         run: node --test services/marketplace-core/tests/*.test.js
