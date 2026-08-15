@@ -13,6 +13,7 @@ test("migrations are ordered, recorded and idempotent", () => {
     "002_catalog_enrichment.sql",
     "003_storefront_cms.sql",
     "004_payment_hardening.sql",
+    "005_private_storage.sql",
   ]);
 
   const productColumns = db.prepare("PRAGMA table_info(products)").all().map((row) => row.name);
@@ -30,6 +31,13 @@ test("migrations are ordered, recorded and idempotent", () => {
   const paymentColumns = db.prepare("PRAGMA table_info(payments)").all().map((row) => row.name);
   assert.ok(paymentColumns.includes("authority"));
   assert.ok(paymentColumns.includes("reference_id"));
+
+  const sellerDocumentIndexes = db.prepare("PRAGMA index_list(seller_documents)").all();
+  assert.ok(
+    sellerDocumentIndexes.some(
+      (index) => index.name === "seller_documents_storage_key_uq" && Number(index.unique) === 1,
+    ),
+  );
 
   db.close();
 });
