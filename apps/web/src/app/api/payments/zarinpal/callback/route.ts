@@ -31,7 +31,9 @@ export async function GET(request: Request) {
     return NextResponse.redirect(accountUrl);
   } catch (error) {
     accountUrl.searchParams.set("payment", "verification-failed");
-    if (error instanceof ApiError) accountUrl.searchParams.set("code", error.code);
+    if (error instanceof ApiError && error.code) {
+      accountUrl.searchParams.set("code", error.code);
+    }
     return NextResponse.redirect(accountUrl);
   }
 }
