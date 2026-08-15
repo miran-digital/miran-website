@@ -50,7 +50,7 @@ export class PostgresPaymentService {
       assert(reservations.rowCount > 0, "No active inventory reservation", "CONFLICT");
       if (reservations.rows.some((item) => new Date(item.expires_at) <= now)) {
         await this.releaseOrderInsideTransaction(client, orderId, "PAYMENT_FAILED");
-        fail("Inventory reservation has expired", "CONFLICT");
+        return { expired: true, orderId };
       }
 
       const existingResult = await client.query(
@@ -100,6 +100,12 @@ export class PostgresPaymentService {
         description: `Miran order ${order.id}`,
       };
     });
+
+    if (prepared.expired) {
+
+      fail("Inventory reservation has expired", "CONFLICT");
+
+    }
 
     if (prepared.reused) return prepared;
 
