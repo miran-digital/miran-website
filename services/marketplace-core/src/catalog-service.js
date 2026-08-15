@@ -32,6 +32,28 @@ function validateDiscount(basePriceIrr, type, value) {
   }
 }
 
+function parseArray(value) {
+  try {
+    const parsed = JSON.parse(value || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function validateArray(value, max, label) {
+  if (!Array.isArray(value) || value.length > max) fail(`Invalid ${label}`);
+  return JSON.stringify(value);
+}
+
+function validateSchedule(startValue, endValue) {
+  const start = startValue ? new Date(startValue) : null;
+  const end = endValue ? new Date(endValue) : null;
+  if (start && Number.isNaN(start.getTime())) fail("Invalid discount start time");
+  if (end && Number.isNaN(end.getTime())) fail("Invalid discount end time");
+  if (start && end && end <= start) fail("Discount end time must be after start time");
+}
+
 export class CatalogService {
   constructor(db) {
     this.db = db;
@@ -71,8 +93,10 @@ export class CatalogService {
     if (actor.role === "ADMIN") {
       return this.db
         .prepare(
-          `SELECT p.*,i.stock_on_hand,i.stock_reserved
-           FROM products p JOIN inventory i ON i.product_id=p.id
+          `SELECT p.*,i.stock_on_hand,i.stock_reserved,c.name AS category_name,c.slug AS category_slug
+           FROM products p
+           JOIN inventory i ON i.product_id=p.id
+           LEFT JOIN categories c ON c.id=p.category_id
            ORDER BY p.updated_at DESC`,
         )
         .all()
@@ -81,10 +105,11 @@ export class CatalogService {
     if (actor.role !== "SELLER") fail("Seller or admin role required", "FORBIDDEN");
     return this.db
       .prepare(
-        `SELECT p.*,i.stock_on_hand,i.stock_reserved
+        `SELECT p.*,i.stock_on_hand,i.stock_reserved,c.name AS category_name,c.slug AS category_slug
          FROM products p
          JOIN inventory i ON i.product_id=p.id
          JOIN sellers s ON s.id=p.seller_id
+         LEFT JOIN categories c ON c.id=p.category_id
          WHERE s.user_id=? AND s.status='APPROVED'
          ORDER BY p.updated_at DESC`,
       )
@@ -101,35 +126,64 @@ export class CatalogService {
 
     const title = input.title === undefined ? product.title : String(input.title).trim();
     const description = input.description === undefined ? product.description : String(input.description);
-    if (!title) fail("Title is required");
+    const brand = input.brand === undefined ? product.brand : String(input.brand || "").trim();
+    if (!title || title.length > 180) fail("Title is required");
+    if (brand.length > 120) fail("Brand is too long");
+
+    const categoryId = input.categoryId === undefined ? product.category_id : input.categoryId || null;
+    if (categoryId) {
+      const category = this.db.prepare("SELECT id FROM categories WHERE id=?").get(categoryId);
+      if (!category) fail("Category not found", "NOT_FOUND");
+    }
+
+    const startsAt = input.discountStartsAt === undefined
+      ? product.discount_starts_at
+      : input.discountStartsAt || null;
+    const endsAt = input.discountEndsAt === undefined
+      ? product.discount_ends_at
+      : input.discountEndsAt || null;
+    validateSchedule(startsAt, endsAt);
+
+    const highlightsJson = input.highlights === undefined
+      ? product.highlights_json
+      : validateArray(input.highlights, 20, "highlights");
+    const specificationsJson = input.specifications === undefined
+      ? product.specifications_json
+      : validateArray(input.specifications, 50, "specifications");
 
     this.db
       .prepare(
         `UPDATE products
-         SET title=?,description=?,base_price_irr=?,discount_type=?,discount_value=?,
-             discount_starts_at=?,discount_ends_at=?,is_amazing=?,updated_at=CURRENT_TIMESTAMP
+         SET title=?,description=?,brand=?,category_id=?,base_price_irr=?,discount_type=?,discount_value=?,
+             discount_starts_at=?,discount_ends_at=?,is_amazing=?,highlights_json=?,specifications_json=?,
+             updated_at=CURRENT_TIMESTAMP
          WHERE id=?`,
       )
       .run(
         title,
         description,
+        brand,
+        categoryId,
         basePriceIrr,
         discountType,
         discountValue,
-        input.discountStartsAt === undefined
-          ? product.discount_starts_at
-          : input.discountStartsAt || null,
-        input.discountEndsAt === undefined
-          ? product.discount_ends_at
-          : input.discountEndsAt || null,
+        startsAt,
+        endsAt,
         input.isAmazing === undefined ? product.is_amazing : input.isAmazing ? 1 : 0,
+        highlightsJson,
+        specificationsJson,
         productId,
       );
     return this.getManaged(actorId, productId);
   }
 
   setPublished(actorId, productId, published) {
-    this.requireManageable(actorId, productId);
+    const product = this.requireManageable(actorId, productId);
+    if (published) {
+      if (!product.title || !product.slug) fail("Product title and slug are required", "CONFLICT");
+      const inventory = this.db.prepare("SELECT stock_on_hand FROM inventory WHERE product_id=?").get(productId);
+      if (!inventory) fail("Inventory not found", "CONFLICT");
+    }
     this.db
       .prepare("UPDATE products SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
       .run(published ? "PUBLISHED" : "DRAFT", productId);
@@ -165,6 +219,11 @@ export class CatalogService {
     if (!url.startsWith("/") && !/^https:\/\//i.test(url)) {
       fail("Media URL must be an internal path or HTTPS URL");
     }
+    if (url.length > 1000) fail("Media URL is too long");
+    const sortOrder = Number(input.sortOrder || 0);
+    if (!Number.isSafeInteger(sortOrder) || sortOrder < 0 || sortOrder > 1_000_000) {
+      fail("Invalid media sort order");
+    }
     const id = randomUUID();
     if (input.isPrimary && input.mediaType === "IMAGE") {
       this.db
@@ -180,7 +239,7 @@ export class CatalogService {
         productId,
         input.mediaType,
         url,
-        Number.isSafeInteger(input.sortOrder) ? input.sortOrder : 0,
+        sortOrder,
         input.isPrimary ? 1 : 0,
       );
     return this.db.prepare("SELECT * FROM product_media WHERE id=?").get(id);
@@ -190,8 +249,11 @@ export class CatalogService {
     this.requireManageable(actorId, productId);
     const product = this.db
       .prepare(
-        `SELECT p.*,i.stock_on_hand,i.stock_reserved
-         FROM products p JOIN inventory i ON i.product_id=p.id WHERE p.id=?`,
+        `SELECT p.*,i.stock_on_hand,i.stock_reserved,c.name AS category_name,c.slug AS category_slug
+         FROM products p
+         JOIN inventory i ON i.product_id=p.id
+         LEFT JOIN categories c ON c.id=p.category_id
+         WHERE p.id=?`,
       )
       .get(productId);
     return this.toManagedProduct(product);
@@ -237,6 +299,11 @@ export class CatalogService {
       status: product.status,
       sellerId: product.seller_id,
       categoryId: product.category_id,
+      categoryName: product.category_name || null,
+      categorySlug: product.category_slug || null,
+      brand: product.brand || "",
+      highlights: parseArray(product.highlights_json),
+      specifications: parseArray(product.specifications_json),
       stockOnHand: product.stock_on_hand,
       stockReserved: product.stock_reserved,
       discountType: product.discount_type,
