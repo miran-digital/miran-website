@@ -28,6 +28,8 @@ export type CatalogProductSummary = {
 export type CatalogProductMedia = {
   id: string;
   label: string;
+  url?: string;
+  mediaType?: "IMAGE" | "VIDEO";
 };
 
 export type CatalogProductSpecification = {
