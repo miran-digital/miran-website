@@ -5,11 +5,13 @@ import { CategoryService } from "./category-service.js";
 import { MarketplaceCore } from "./core.js";
 import { migrateSqlite, openSqliteDatabase } from "./database.js";
 import { OrderQueryService } from "./order-query-service.js";
+import { PaymentService } from "./payment-service.js";
 import { ProductCreateService } from "./product-create-service.js";
 import { ProductLifecycleService } from "./product-lifecycle-service.js";
 import { PublicCatalogService } from "./public-catalog-service.js";
 import { SellerVerificationService } from "./seller-verification-service.js";
 import { StorefrontCmsService } from "./storefront-cms-service.js";
+import { ZarinpalClient } from "./zarinpal-client.js";
 
 const db = openSqliteDatabase();
 migrateSqlite(db);
@@ -18,11 +20,17 @@ const addresses = new AddressService(db);
 const catalog = new CatalogService(db);
 const categories = new CategoryService(db);
 const orders = new OrderQueryService(db);
+const zarinpal = new ZarinpalClient({
+  merchantId: process.env.ZARINPAL_MERCHANT_ID,
+  sandbox: process.env.ZARINPAL_SANDBOX === "true",
+});
+const payments = new PaymentService(db, zarinpal, { reservationMinutes: 30 });
 const productCreator = new ProductCreateService(db);
 const productLifecycle = new ProductLifecycleService(db);
 const publicCatalog = new PublicCatalogService(db);
 const sellerVerification = new SellerVerificationService(db);
 const storefrontCms = new StorefrontCmsService(db);
+const publicSiteUrl = String(process.env.MIRAN_PUBLIC_URL || "https://almiran.ir").replace(/\/+$/, "");
 
 function sendJson(res, status, body) {
   if (status === 204) {
@@ -89,6 +97,14 @@ const server = createServer(async (req, res) => {
     const publicProductMatch = url.pathname.match(/^\/v1\/catalog\/products\/([^/]+)$/);
     if (req.method === "GET" && publicProductMatch) {
       return sendJson(res, 200, publicCatalog.getProduct(decodeURIComponent(publicProductMatch[1])));
+    }
+
+    if (req.method === "POST" && url.pathname === "/v1/payments/zarinpal/verify") {
+      const body = await readJson(req);
+      return sendJson(res, 200, await payments.verifyZarinpalCallback({
+        authority: body.authority,
+        status: body.status,
+      }));
     }
 
     if (req.method === "POST" && url.pathname === "/v1/auth/register") {
@@ -275,6 +291,14 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 201, core.createOrder(user.id, await readJson(req)));
     }
 
+    if (req.method === "POST" && url.pathname === "/v1/payments/zarinpal/start") {
+      const body = await readJson(req);
+      return sendJson(res, 201, await payments.startZarinpal(user.id, String(body.orderId || ""), {
+        callbackUrl: `${publicSiteUrl}/api/payments/zarinpal/callback`,
+        email: user.email,
+      }));
+    }
+
     return sendJson(res, 404, { error: "NOT_FOUND" });
   } catch (error) {
     const status = error.code === "UNAUTHORIZED" ? 401
@@ -282,6 +306,8 @@ const server = createServer(async (req, res) => {
       : error.code === "NOT_FOUND" ? 404
       : error.code === "OUT_OF_STOCK" || error.code === "CONFLICT" ? 409
       : error.code === "PAYLOAD_TOO_LARGE" ? 413
+      : error.code === "PAYMENT_NOT_CONFIGURED" ? 503
+      : error.code === "PAYMENT_PROVIDER_ERROR" || error.code === "PAYMENT_VERIFICATION_FAILED" ? 502
       : 400;
     return sendJson(res, status, { error: error.code || "BAD_REQUEST", message: error.message });
   }
