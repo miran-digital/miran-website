@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { CatalogProductMedia } from "./catalog-gateway";
 import styles from "./product-detail.module.css";
+import mediaStyles from "./product-gallery-media.module.css";
 
 type ProductGalleryProps = {
   items: readonly CatalogProductMedia[];
@@ -22,7 +23,7 @@ function Media({ item, mediaLabel }: { item: CatalogProductMedia | undefined; me
   if (item.mediaType === "VIDEO") {
     return (
       <video
-        className={styles.galleryMedia}
+        className={mediaStyles.media}
         controls
         preload="metadata"
         playsInline
@@ -36,7 +37,7 @@ function Media({ item, mediaLabel }: { item: CatalogProductMedia | undefined; me
 
   return (
     <img
-      className={styles.galleryMedia}
+      className={mediaStyles.media}
       src={item.url}
       alt={item.label}
       loading="eager"
@@ -67,7 +68,7 @@ export function ProductGallery({ items, mediaLabel }: ProductGalleryProps) {
             >
               {item.url && item.mediaType !== "VIDEO" ? (
                 <img
-                  className={styles.thumbnailMedia}
+                  className={mediaStyles.thumbnailMedia}
                   src={item.url}
                   alt=""
                   loading="lazy"
