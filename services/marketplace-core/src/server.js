@@ -7,6 +7,7 @@ import { migrateSqlite, openSqliteDatabase } from "./database.js";
 import { ProductCreateService } from "./product-create-service.js";
 import { PublicCatalogService } from "./public-catalog-service.js";
 import { SellerVerificationService } from "./seller-verification-service.js";
+import { StorefrontCmsService } from "./storefront-cms-service.js";
 
 const db = openSqliteDatabase();
 migrateSqlite(db);
@@ -17,6 +18,7 @@ const categories = new CategoryService(db);
 const productCreator = new ProductCreateService(db);
 const publicCatalog = new PublicCatalogService(db);
 const sellerVerification = new SellerVerificationService(db);
+const storefrontCms = new StorefrontCmsService(db);
 
 function sendJson(res, status, body) {
   if (status === 204) {
@@ -60,6 +62,10 @@ const server = createServer(async (req, res) => {
 
     if (req.method === "GET" && url.pathname === "/health") {
       return sendJson(res, 200, { ok: true, service: "marketplace-core" });
+    }
+
+    if (req.method === "GET" && url.pathname === "/v1/storefront") {
+      return sendJson(res, 200, storefrontCms.getPublic());
     }
 
     if (req.method === "GET" && url.pathname === "/v1/catalog/categories") {
@@ -126,6 +132,36 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname === "/v1/sellers/guarantees") {
       return sendJson(res, 201, sellerVerification.addGuarantee(user.id, await readJson(req)));
+    }
+
+    if (req.method === "GET" && url.pathname === "/v1/admin/storefront") {
+      return sendJson(res, 200, storefrontCms.getManaged(user.id));
+    }
+    if (req.method === "POST" && url.pathname === "/v1/admin/header-messages") {
+      return sendJson(res, 201, storefrontCms.createHeaderMessage(user.id, await readJson(req)));
+    }
+    const headerMessageMatch = url.pathname.match(/^\/v1\/admin\/header-messages\/([^/]+)$/);
+    if (headerMessageMatch && req.method === "PATCH") {
+      return sendJson(res, 200, storefrontCms.updateHeaderMessage(user.id, decodeURIComponent(headerMessageMatch[1]), await readJson(req)));
+    }
+    if (headerMessageMatch && req.method === "DELETE") {
+      return sendJson(res, 200, storefrontCms.deleteHeaderMessage(user.id, decodeURIComponent(headerMessageMatch[1])));
+    }
+
+    if (req.method === "POST" && url.pathname === "/v1/admin/banners") {
+      return sendJson(res, 201, storefrontCms.createBanner(user.id, await readJson(req)));
+    }
+    const bannerMatch = url.pathname.match(/^\/v1\/admin\/banners\/([^/]+)$/);
+    if (bannerMatch && req.method === "PATCH") {
+      return sendJson(res, 200, storefrontCms.updateBanner(user.id, decodeURIComponent(bannerMatch[1]), await readJson(req)));
+    }
+    if (bannerMatch && req.method === "DELETE") {
+      return sendJson(res, 200, storefrontCms.deleteBanner(user.id, decodeURIComponent(bannerMatch[1])));
+    }
+
+    const sectionMatch = url.pathname.match(/^\/v1\/admin\/home-sections\/([^/]+)$/);
+    if (sectionMatch && req.method === "PATCH") {
+      return sendJson(res, 200, storefrontCms.updateSection(user.id, decodeURIComponent(sectionMatch[1]), await readJson(req)));
     }
 
     if (req.method === "GET" && url.pathname === "/v1/admin/sellers") {
