@@ -4,6 +4,7 @@ import { CatalogService } from "./catalog-service.js";
 import { CategoryService } from "./category-service.js";
 import { MarketplaceCore } from "./core.js";
 import { migrateSqlite, openSqliteDatabase } from "./database.js";
+import { LegacyPreviewImportService } from "./legacy-preview-import-service.js";
 import { OrderQueryService } from "./order-query-service.js";
 import { PaymentService } from "./payment-service.js";
 import { S3PrivateObjectStorage } from "./private-object-storage.js";
@@ -29,6 +30,7 @@ const zarinpal = new ZarinpalClient({
 const payments = new PaymentService(db, zarinpal, { reservationMinutes: 30 });
 const privateStorage = new S3PrivateObjectStorage();
 const productCreator = new ProductCreateService(db);
+const legacyPreviewImport = new LegacyPreviewImportService(db, productCreator);
 const productLifecycle = new ProductLifecycleService(db);
 const publicCatalog = new PublicCatalogService(db);
 const sellerVerification = new SellerVerificationService(db);
@@ -178,6 +180,12 @@ const server = createServer(async (req, res) => {
 
     if (req.method === "GET" && url.pathname === "/v1/admin/storefront") {
       return sendJson(res, 200, storefrontCms.getManaged(user.id));
+    }
+    if (req.method === "POST" && url.pathname === "/v1/admin/legacy-preview/content") {
+      return sendJson(res, 200, legacyPreviewImport.importContent(user.id, await readJson(req)));
+    }
+    if (req.method === "POST" && url.pathname === "/v1/admin/legacy-preview/product") {
+      return sendJson(res, 201, legacyPreviewImport.importProductDraft(user.id, await readJson(req)));
     }
     if (req.method === "POST" && url.pathname === "/v1/admin/header-messages") {
       return sendJson(res, 201, storefrontCms.createHeaderMessage(user.id, await readJson(req)));
