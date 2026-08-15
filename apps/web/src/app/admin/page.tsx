@@ -4,6 +4,7 @@ import { AdminPage } from "@/features/admin/admin-page";
 import { RealCategoryManager } from "@/features/admin/real-category-manager";
 import { RealProductManager } from "@/features/admin/real-product-manager";
 import { RealSellerVerificationManager } from "@/features/admin/real-seller-verification-manager";
+import { RealStorefrontCmsManager } from "@/features/admin/real-storefront-cms-manager";
 import { getCatalogCategories } from "@/features/catalog/catalog-data";
 import { getCurrentUser } from "@/lib/auth/current-user";
 
@@ -18,13 +19,14 @@ export default async function AdminRoute() {
   if (!user) redirect("/account?returnTo=/admin");
   if (user.role !== "ADMIN") redirect("/account?error=admin-required");
 
-  const categories = await getCatalogCategories();
+  const legacyCategories = await getCatalogCategories();
   return (
     <>
+      <RealStorefrontCmsManager />
       <RealCategoryManager />
       <RealProductManager />
       <RealSellerVerificationManager />
-      <AdminPage categories={categories} />
+      <AdminPage categories={legacyCategories} />
     </>
   );
 }
