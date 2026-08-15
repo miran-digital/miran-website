@@ -83,6 +83,9 @@ export async function PATCH(request: Request) {
     } else if (action === "inventory") {
       path += "/inventory";
       payload = { stockOnHand: body.stockOnHand };
+    } else if (action === "archive") {
+      path += "/archive";
+      payload = { archived: body.archived !== false };
     }
 
     const product = await apiRequest(path, {
@@ -91,6 +94,29 @@ export async function PATCH(request: Request) {
       body: payload,
     });
     return NextResponse.json({ product });
+  } catch (error) {
+    return respondError(error);
+  }
+}
+
+export async function DELETE(request: Request) {
+  const token = await tokenOrNull();
+  if (!token) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+  try {
+    const body = await request.json();
+    const productId = String(body.productId || "");
+    const mediaId = String(body.mediaId || "");
+    if (!productId || !mediaId) {
+      return NextResponse.json({ error: "INVALID_INPUT" }, { status: 400 });
+    }
+    const result = await apiRequest(
+      `/v1/products/${encodeURIComponent(productId)}/media/${encodeURIComponent(mediaId)}`,
+      {
+        method: "DELETE",
+        headers: { authorization: `Bearer ${token}` },
+      },
+    );
+    return NextResponse.json({ result });
   } catch (error) {
     return respondError(error);
   }
