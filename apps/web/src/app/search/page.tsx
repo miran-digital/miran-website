@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { Container } from "@miran/ui";
-import { searchCatalogProducts } from "@/features/catalog/catalog-data";
 import { ProductGrid } from "@/features/catalog/product-grid";
+import { searchRealCatalogProducts } from "@/features/catalog/real-search-data";
 import styles from "@/features/catalog/discovery.module.css";
 
 type SearchParams = Record<string, string | string[] | undefined>;
+
+export const dynamic = "force-dynamic";
 
 function firstValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -34,7 +36,7 @@ export default async function SearchPage({
 }) {
   const raw = await searchParams;
   const query = (firstValue(raw.q) ?? "").trim().slice(0, 100);
-  const result = await searchCatalogProducts({
+  const result = await searchRealCatalogProducts({
     query,
     page: parsePage(firstValue(raw.page)),
     pageSize: 12,
@@ -53,8 +55,8 @@ export default async function SearchPage({
           <h1>{query ? `نتایج «${query}»` : "جست‌وجوی محصولات"}</h1>
           <p>
             {query
-              ? `${result.totalProducts.toLocaleString("fa-IR")} محصول پیدا شد.`
-              : "نام کالا، برند یا دسته‌بندی را وارد کنید."}
+              ? `${result.totalProducts.toLocaleString("fa-IR")} محصول واقعی پیدا شد.`
+              : "نام کالا یا برند را وارد کنید."}
           </p>
         </header>
         <form className={styles.searchForm} action="/search" method="get">
@@ -67,7 +69,7 @@ export default async function SearchPage({
             type="search"
             defaultValue={query}
             maxLength={100}
-            placeholder="مثلاً لپ‌تاپ، کفش یا Nova"
+            placeholder="مثلاً موبایل یا نام برند"
           />
           <button type="submit">جست‌وجو</button>
         </form>
