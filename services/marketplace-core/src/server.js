@@ -10,6 +10,8 @@ import { PaymentService } from "./payment-service.js";
 import { S3PrivateObjectStorage } from "./private-object-storage.js";
 import { ProductCreateService } from "./product-create-service.js";
 import { ProductLifecycleService } from "./product-lifecycle-service.js";
+import { ProductMediaUploadService } from "./product-media-upload-service.js";
+import { S3PublicAssetStorage } from "./public-asset-storage.js";
 import { PublicCatalogService } from "./public-catalog-service.js";
 import { SellerDocumentUploadService } from "./seller-document-upload-service.js";
 import { SellerVerificationService } from "./seller-verification-service.js";
@@ -29,9 +31,11 @@ const zarinpal = new ZarinpalClient({
 });
 const payments = new PaymentService(db, zarinpal, { reservationMinutes: 30 });
 const privateStorage = new S3PrivateObjectStorage();
+const publicMediaStorage = new S3PublicAssetStorage();
 const productCreator = new ProductCreateService(db);
 const legacyPreviewImport = new LegacyPreviewImportService(db, productCreator);
 const productLifecycle = new ProductLifecycleService(db);
+const productMediaUploads = new ProductMediaUploadService(db, catalog, publicMediaStorage);
 const publicCatalog = new PublicCatalogService(db);
 const sellerVerification = new SellerVerificationService(db);
 const sellerDocumentUploads = new SellerDocumentUploadService(
@@ -301,6 +305,32 @@ const server = createServer(async (req, res) => {
     if (req.method === "PATCH" && inventoryMatch) {
       const body = await readJson(req);
       return sendJson(res, 200, catalog.setInventory(user.id, decodeURIComponent(inventoryMatch[1]), body.stockOnHand));
+    }
+
+    const mediaUploadTicketMatch = url.pathname.match(/^\/v1\/products\/([^/]+)\/media\/upload-ticket$/);
+    if (req.method === "POST" && mediaUploadTicketMatch) {
+      return sendJson(
+        res,
+        201,
+        productMediaUploads.issueUploadTicket(
+          user.id,
+          decodeURIComponent(mediaUploadTicketMatch[1]),
+          await readJson(req),
+        ),
+      );
+    }
+
+    const mediaCompleteMatch = url.pathname.match(/^\/v1\/products\/([^/]+)\/media\/complete$/);
+    if (req.method === "POST" && mediaCompleteMatch) {
+      return sendJson(
+        res,
+        201,
+        await productMediaUploads.completeUpload(
+          user.id,
+          decodeURIComponent(mediaCompleteMatch[1]),
+          await readJson(req),
+        ),
+      );
     }
 
     const mediaMatch = url.pathname.match(/^\/v1\/products\/([^/]+)\/media$/);
