@@ -1,10 +1,12 @@
 import { createServer } from "node:http";
+import { AddressService } from "./address-service.js";
 import { MarketplaceCore } from "./core.js";
 import { migrateSqlite, openSqliteDatabase } from "./database.js";
 
 const db = openSqliteDatabase();
 migrateSqlite(db);
 const core = new MarketplaceCore(db);
+const addresses = new AddressService(db);
 
 function sendJson(res, status, body) {
   if (status === 204) {
@@ -25,7 +27,11 @@ async function readJson(req) {
   let raw = "";
   for await (const chunk of req) {
     raw += chunk;
-    if (raw.length > 1_000_000) throw Object.assign(new Error("Request too large"), { code: "PAYLOAD_TOO_LARGE" });
+    if (raw.length > 1_000_000) {
+      throw Object.assign(new Error("Request too large"), {
+        code: "PAYLOAD_TOO_LARGE",
+      });
+    }
   }
   if (!raw) return {};
   try {
@@ -50,7 +56,11 @@ const server = createServer(async (req, res) => {
 
     if (req.method === "POST" && url.pathname === "/v1/auth/register") {
       const body = await readJson(req);
-      return sendJson(res, 201, core.register({ email: body.email, password: body.password }));
+      return sendJson(
+        res,
+        201,
+        core.register({ email: body.email, password: body.password }),
+      );
     }
 
     if (req.method === "POST" && url.pathname === "/v1/auth/login") {
@@ -65,27 +75,70 @@ const server = createServer(async (req, res) => {
       core.logout(token);
       return sendJson(res, 204);
     }
-    if (req.method === "GET" && url.pathname === "/v1/me") return sendJson(res, 200, user);
-    if (req.method === "POST" && url.pathname === "/v1/addresses") return sendJson(res, 201, core.addAddress(user.id, await readJson(req)));
-    if (req.method === "POST" && url.pathname === "/v1/sellers") return sendJson(res, 201, core.requestSeller(user.id, await readJson(req)));
+    if (req.method === "GET" && url.pathname === "/v1/me") {
+      return sendJson(res, 200, user);
+    }
 
-    if (req.method === "POST" && /^\/v1\/admin\/sellers\/[^/]+\/approve$/.test(url.pathname)) {
+    if (url.pathname === "/v1/addresses") {
+      if (req.method === "GET") return sendJson(res, 200, addresses.list(user.id));
+      if (req.method === "POST") {
+        return sendJson(res, 201, core.addAddress(user.id, await readJson(req)));
+      }
+    }
+
+    const addressDefaultMatch = url.pathname.match(
+      /^\/v1\/addresses\/([^/]+)\/default$/,
+    );
+    if (req.method === "PATCH" && addressDefaultMatch) {
+      return sendJson(
+        res,
+        200,
+        addresses.setDefault(user.id, addressDefaultMatch[1]),
+      );
+    }
+
+    const addressDeleteMatch = url.pathname.match(/^\/v1\/addresses\/([^/]+)$/);
+    if (req.method === "DELETE" && addressDeleteMatch) {
+      return sendJson(res, 200, addresses.remove(user.id, addressDeleteMatch[1]));
+    }
+
+    if (req.method === "POST" && url.pathname === "/v1/sellers") {
+      return sendJson(res, 201, core.requestSeller(user.id, await readJson(req)));
+    }
+
+    if (
+      req.method === "POST" &&
+      /^\/v1\/admin\/sellers\/[^/]+\/approve$/.test(url.pathname)
+    ) {
       const sellerId = url.pathname.split("/")[4];
       return sendJson(res, 200, core.approveSeller(user.id, sellerId));
     }
 
-    if (req.method === "POST" && url.pathname === "/v1/products") return sendJson(res, 201, core.createProduct(user.id, await readJson(req)));
-    if (req.method === "POST" && url.pathname === "/v1/orders") return sendJson(res, 201, core.createOrder(user.id, await readJson(req)));
+    if (req.method === "POST" && url.pathname === "/v1/products") {
+      return sendJson(res, 201, core.createProduct(user.id, await readJson(req)));
+    }
+    if (req.method === "POST" && url.pathname === "/v1/orders") {
+      return sendJson(res, 201, core.createOrder(user.id, await readJson(req)));
+    }
 
     return sendJson(res, 404, { error: "NOT_FOUND" });
   } catch (error) {
-    const status = error.code === "UNAUTHORIZED" ? 401
-      : error.code === "FORBIDDEN" ? 403
-      : error.code === "NOT_FOUND" ? 404
-      : error.code === "OUT_OF_STOCK" || error.code === "CONFLICT" ? 409
-      : error.code === "PAYLOAD_TOO_LARGE" ? 413
-      : 400;
-    return sendJson(res, status, { error: error.code || "BAD_REQUEST", message: error.message });
+    const status =
+      error.code === "UNAUTHORIZED"
+        ? 401
+        : error.code === "FORBIDDEN"
+          ? 403
+          : error.code === "NOT_FOUND"
+            ? 404
+            : error.code === "OUT_OF_STOCK" || error.code === "CONFLICT"
+              ? 409
+              : error.code === "PAYLOAD_TOO_LARGE"
+                ? 413
+                : 400;
+    return sendJson(res, status, {
+      error: error.code || "BAD_REQUEST",
+      message: error.message,
+    });
   }
 });
 
