@@ -39,6 +39,22 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const action = String(body.action || "create");
+
+    if (action === "media-upload-ticket" || action === "media-upload-complete") {
+      const id = String(body.id || "");
+      if (!id) return NextResponse.json({ error: "INVALID_INPUT" }, { status: 400 });
+      const suffix = action === "media-upload-ticket" ? "upload-ticket" : "complete";
+      const result = await apiRequest(
+        `/v1/products/${encodeURIComponent(id)}/media/${suffix}`,
+        {
+          method: "POST",
+          headers: { authorization: `Bearer ${token}` },
+          body: body.data ?? {},
+        },
+      );
+      return NextResponse.json({ result }, { status: 201 });
+    }
+
     if (action === "media") {
       const id = String(body.id || "");
       if (!id) return NextResponse.json({ error: "INVALID_INPUT" }, { status: 400 });
