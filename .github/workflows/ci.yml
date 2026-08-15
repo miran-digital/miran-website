@@ -26,7 +26,9 @@ jobs:
         run: |
           node --check services/marketplace-core/src/database.js
           node --check services/marketplace-core/src/core.js
+          node --check services/marketplace-core/src/address-service.js
           node --check services/marketplace-core/src/server.js
           node --check services/marketplace-core/tests/core.test.js
+          node --check services/marketplace-core/tests/address.test.js
       - name: Test marketplace core
-        run: node --test services/marketplace-core/tests/core.test.js
+        run: node --test services/marketplace-core/tests/*.test.js
