@@ -1,19 +1,25 @@
 import { BrandSection } from "@/features/home/brand-section";
+import { CategorySection } from "@/features/home/category-section";
 import { getHomeContent } from "@/features/home/home-content";
 import { HeroSection } from "@/features/home/hero-section";
-import { getHomeMerchandisingContent } from "@/features/home/merchandising-content";
+import { ProductRail } from "@/features/home/product-rail";
+import {
+  getRealHomeCategories,
+  getRealHomeRails,
+} from "@/features/home/real-home-data";
 import { TrustSection } from "@/features/home/trust-section";
 import {
   ManagedBanners,
-  ManagedCategories,
-  ManagedProductRail,
   ManagedSection,
 } from "@/features/admin/managed-storefront";
 
+export const dynamic = "force-dynamic";
+
 export default async function HomePage() {
-  const [content, merchandising] = await Promise.all([
+  const [content, categories, rails] = await Promise.all([
     getHomeContent(),
-    getHomeMerchandisingContent(),
+    getRealHomeCategories(),
+    getRealHomeRails(),
   ]);
 
   return (
@@ -22,27 +28,14 @@ export default async function HomePage() {
         <HeroSection content={content.hero} />
       </ManagedSection>
       <ManagedBanners />
-      <ManagedCategories categories={content.categories} />
-      <ManagedProductRail
-        section={merchandising.specialOffers}
-        sectionKey="specialOffers"
-        tone="accent"
-      />
-      {merchandising.productSections.map((section) => {
-        const managedSection =
-          section.id === "digital-picks" ? "digitalPicks" : "homePicks";
-        return (
-          <ManagedProductRail
-            key={section.id}
-            section={section}
-            sectionKey={managedSection}
-          />
-        );
-      })}
-      <ManagedProductRail
-        section={merchandising.trending}
-        sectionKey="trending"
-      />
+      <CategorySection categories={categories} />
+      {rails.map((section, index) => (
+        <ProductRail
+          key={section.id}
+          section={section}
+          tone={index === 0 && section.id === "database-amazing" ? "accent" : "default"}
+        />
+      ))}
       <ManagedSection section="brands">
         <BrandSection content={content.brands} />
       </ManagedSection>
