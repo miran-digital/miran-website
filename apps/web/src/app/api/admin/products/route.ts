@@ -38,6 +38,23 @@ export async function POST(request: Request) {
   if (!token) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
   try {
     const body = await request.json();
+    const action = String(body.action || "create");
+    if (action === "media") {
+      const id = String(body.id || "");
+      if (!id) return NextResponse.json({ error: "INVALID_INPUT" }, { status: 400 });
+      const media = await apiRequest(`/v1/products/${encodeURIComponent(id)}/media`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          mediaType: body.mediaType,
+          url: body.url,
+          sortOrder: body.sortOrder,
+          isPrimary: body.isPrimary,
+        },
+      });
+      return NextResponse.json({ media }, { status: 201 });
+    }
+
     const product = await apiRequest("/v1/products", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
