@@ -14,12 +14,14 @@ test("migrations are ordered, recorded and idempotent", () => {
     "003_storefront_cms.sql",
     "004_payment_hardening.sql",
     "005_private_storage.sql",
+    "006_legacy_preview_import.sql",
   ]);
 
   const productColumns = db.prepare("PRAGMA table_info(products)").all().map((row) => row.name);
   assert.ok(productColumns.includes("brand"));
   assert.ok(productColumns.includes("highlights_json"));
   assert.ok(productColumns.includes("specifications_json"));
+  assert.ok(productColumns.includes("legacy_key"));
 
   const categoryColumns = db.prepare("PRAGMA table_info(categories)").all().map((row) => row.name);
   assert.ok(categoryColumns.includes("description"));
@@ -38,6 +40,11 @@ test("migrations are ordered, recorded and idempotent", () => {
       (index) => index.name === "seller_documents_storage_key_uq" && Number(index.unique) === 1,
     ),
   );
+
+  const headerColumns = db.prepare("PRAGMA table_info(header_messages)").all().map((row) => row.name);
+  const bannerColumns = db.prepare("PRAGMA table_info(storefront_banners)").all().map((row) => row.name);
+  assert.ok(headerColumns.includes("legacy_key"));
+  assert.ok(bannerColumns.includes("legacy_key"));
 
   db.close();
 });
