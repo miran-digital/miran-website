@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AdminPage } from "@/features/admin/admin-page";
 import { RealCategoryManager } from "@/features/admin/real-category-manager";
+import { RealOrderManager } from "@/features/admin/real-order-manager";
 import { RealProductManager } from "@/features/admin/real-product-manager";
 import { RealSellerVerificationManager } from "@/features/admin/real-seller-verification-manager";
 import { RealStorefrontCmsManager } from "@/features/admin/real-storefront-cms-manager";
@@ -23,6 +24,7 @@ export default async function AdminRoute() {
   return (
     <>
       <RealStorefrontCmsManager />
+      <RealOrderManager />
       <RealCategoryManager />
       <RealProductManager />
       <RealSellerVerificationManager />
