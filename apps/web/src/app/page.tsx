@@ -5,6 +5,7 @@ import { getHomeContent } from "@/features/home/home-content";
 import { HeroSection } from "@/features/home/hero-section";
 import { ProductRail } from "@/features/home/product-rail";
 import {
+  getRealHomeBrands,
   getRealHomeCategories,
   getRealHomeRails,
 } from "@/features/home/real-home-data";
@@ -14,10 +15,11 @@ import { getStorefrontCms, sectionVisible } from "@/lib/storefront/cms";
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [content, categories, rails, cms] = await Promise.all([
+  const [content, categories, rails, brands, cms] = await Promise.all([
     getHomeContent(),
     getRealHomeCategories(),
     getRealHomeRails(),
+    getRealHomeBrands(),
     getStorefrontCms(),
   ]);
 
@@ -38,7 +40,7 @@ export default async function HomePage() {
           />
         );
       })}
-      {sectionVisible(cms, "brands") ? <BrandSection content={content.brands} /> : null}
+      {sectionVisible(cms, "brands") ? <BrandSection content={brands} /> : null}
       {sectionVisible(cms, "trust") ? <TrustSection services={content.trustServices} /> : null}
     </main>
   );

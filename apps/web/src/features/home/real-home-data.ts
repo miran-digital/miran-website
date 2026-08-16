@@ -1,5 +1,5 @@
 import { apiRequest } from "@/lib/api/client";
-import type { HomeCategory } from "./home-content";
+import type { HomeBrandSection, HomeCategory } from "./home-content";
 import type { HomeProductRail } from "./merchandising-content";
 import {
   getRealAmazingProducts,
@@ -37,6 +37,7 @@ function toHomeProducts(
     title: product.title,
     href: product.href,
     mediaLabel: product.mediaLabel,
+    ...(product.imageUrl ? { imageUrl: product.imageUrl } : {}),
     eyebrow: product.brandName,
     ...(product.badge ? { badge: product.badge } : {}),
     price: product.price,
@@ -55,7 +56,7 @@ export async function getRealHomeRails(): Promise<readonly HomeProductRail[]> {
     sections.push({
       id: "database-amazing",
       title: "پیشنهاد شگفت‌انگیز",
-      description: "تخفیف‌های فعال که قیمتشان در Backend محاسبه می‌شود.",
+      description: "تخفیف‌های فعال با قیمت نهایی محاسبه‌شده در Miran.",
       href: "/offers",
       linkLabel: "مشاهده همه پیشنهادها",
       products: toHomeProducts(amazing),
@@ -64,12 +65,37 @@ export async function getRealHomeRails(): Promise<readonly HomeProductRail[]> {
   if (newest.length > 0) {
     sections.push({
       id: "database-products",
-      title: "محصولات Miran",
-      description: "محصولات منتشرشده مستقیم از Database فروشگاه.",
+      title: "جدیدترین محصولات Miran",
+      description: "محصولات منتشرشده با قیمت و موجودی واقعی فروشگاه.",
       href: "/categories",
       linkLabel: "مشاهده همه محصولات",
       products: toHomeProducts(newest),
     });
   }
   return sections;
+}
+
+export async function getRealHomeBrands(limit = 12): Promise<HomeBrandSection> {
+  const products = await getRealHomeProducts(100);
+  const seen = new Set<string>();
+  const items = [];
+
+  for (const product of products) {
+    if (!product.brandName || seen.has(product.brandId)) continue;
+    seen.add(product.brandId);
+    items.push({
+      id: product.brandId,
+      name: product.brandName,
+      href: `/brand/${encodeURIComponent(product.brandId)}`,
+    });
+    if (items.length >= limit) break;
+  }
+
+  return {
+    title: "برندهای موجود در Miran",
+    description: "برندها مستقیماً از محصولات منتشرشده فروشگاه ساخته می‌شوند.",
+    href: "/brands",
+    linkLabel: "مشاهده همه برندها",
+    items,
+  };
 }

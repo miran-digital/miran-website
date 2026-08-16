@@ -8,6 +8,7 @@ export type HomeProduct = {
   title: string;
   href: string;
   mediaLabel: string;
+  imageUrl?: string;
   eyebrow?: string;
   badge?: string;
   price: StorefrontMoney;

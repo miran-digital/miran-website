@@ -49,65 +49,25 @@ export type HomeContent = {
   trustServices: readonly TrustService[];
 };
 
-const mockHomeContent: HomeContent = {
+const defaultHomeContent: HomeContent = {
   hero: {
-    eyebrow: "خرید هوشمند با Miran Shop",
-    title: "کالاهای منتخب برای خریدی سریع، ساده و مطمئن",
+    eyebrow: "Marketplace مدرن Miran",
+    title: "خرید ساده‌تر با قیمت و موجودی واقعی",
     description:
-      "یک Marketplace مدرن با جست‌وجوی سریع، دسته‌بندی روشن و تجربه خرید بهینه برای موبایل و دسکتاپ.",
-    primaryAction: { label: "مشاهده پیشنهادهای ویژه", href: "/offers" },
+      "محصولات منتشرشده، تخفیف‌ها، موجودی، نشانی، روش ارسال و سفارش در Miran از جریان واقعی فروشگاه خوانده و کنترل می‌شوند.",
+    primaryAction: { label: "مشاهده پیشنهادهای شگفت‌انگیز", href: "/offers" },
     secondaryAction: { label: "مرور دسته‌بندی‌ها", href: "#categories" },
-    mediaLabel: "فضای رسانه‌ای Hero — آماده اتصال به CMS و Media Service",
+    mediaLabel: "Miran Marketplace — خرید با Catalog و موجودی واقعی",
   },
   categories: [
-    {
-      id: "digital",
-      name: "کالای دیجیتال",
-      href: "/category/digital",
-      itemCountLabel: "موبایل، لپ‌تاپ و لوازم جانبی",
-    },
-    {
-      id: "home-kitchen",
-      name: "خانه و آشپزخانه",
-      href: "/category/home-kitchen",
-      itemCountLabel: "لوازم خانه و پخت‌وپز",
-    },
-    {
-      id: "fashion",
-      name: "مد و پوشاک",
-      href: "/category/fashion",
-      itemCountLabel: "پوشاک، کفش و اکسسوری",
-    },
-    {
-      id: "beauty-health",
-      name: "زیبایی و سلامت",
-      href: "/category/beauty-health",
-      itemCountLabel: "مراقبت شخصی و زیبایی",
-    },
-    {
-      id: "sports",
-      name: "ورزش و سفر",
-      href: "/category/sports-travel",
-      itemCountLabel: "ورزشی، کمپ و سفر",
-    },
-    {
-      id: "kids",
-      name: "کودک و سرگرمی",
-      href: "/category/kids-entertainment",
-      itemCountLabel: "اسباب‌بازی و محصولات کودک",
-    },
-    {
-      id: "automotive",
-      name: "خودرو و ابزار",
-      href: "/category/automotive-tools",
-      itemCountLabel: "لوازم خودرو و ابزار",
-    },
-    {
-      id: "grocery",
-      name: "سوپرمارکت",
-      href: "/category/grocery",
-      itemCountLabel: "کالاهای مصرفی روزمره",
-    },
+    { id: "digital", name: "کالای دیجیتال", href: "/category/digital", itemCountLabel: "موبایل، لپ‌تاپ و لوازم جانبی" },
+    { id: "home-kitchen", name: "خانه و آشپزخانه", href: "/category/home-kitchen", itemCountLabel: "لوازم خانه و پخت‌وپز" },
+    { id: "fashion", name: "مد و پوشاک", href: "/category/fashion", itemCountLabel: "پوشاک، کفش و اکسسوری" },
+    { id: "beauty-health", name: "زیبایی و سلامت", href: "/category/beauty-health", itemCountLabel: "مراقبت شخصی و زیبایی" },
+    { id: "sports", name: "ورزش و سفر", href: "/category/sports-travel", itemCountLabel: "ورزشی، کمپ و سفر" },
+    { id: "kids", name: "کودک و سرگرمی", href: "/category/kids-entertainment", itemCountLabel: "اسباب‌بازی و محصولات کودک" },
+    { id: "automotive", name: "خودرو و ابزار", href: "/category/automotive-tools", itemCountLabel: "لوازم خودرو و ابزار" },
+    { id: "grocery", name: "سوپرمارکت", href: "/category/grocery", itemCountLabel: "کالاهای مصرفی روزمره" },
   ],
   brands: {
     title: "برندهای منتخب",
@@ -124,33 +84,13 @@ const mockHomeContent: HomeContent = {
     ],
   },
   trustServices: [
-    {
-      id: "secure-payment",
-      title: "پرداخت امن",
-      description: "فرایند پرداخت شفاف و آماده اتصال به درگاه‌های امن.",
-      symbol: "امن",
-    },
-    {
-      id: "fast-delivery",
-      title: "ارسال سریع",
-      description: "ساختار آماده برای روش‌های ارسال و رهگیری سفارش.",
-      symbol: "سریع",
-    },
-    {
-      id: "support",
-      title: "پشتیبانی پاسخ‌گو",
-      description: "مسیر روشن برای دریافت کمک قبل و بعد از خرید.",
-      symbol: "۲۴/۷",
-    },
-    {
-      id: "returns",
-      title: "مرجوعی شفاف",
-      description: "قوانین بازگشت کالا به‌صورت قابل‌فهم و در دسترس.",
-      symbol: "بازگشت",
-    },
+    { id: "verified-payment", title: "پرداخت تأییدشده", description: "سفارش فقط پس از Verify موفق درگاه به وضعیت پرداخت‌شده می‌رود.", symbol: "تأیید" },
+    { id: "real-inventory", title: "موجودی واقعی", description: "موجودی در Checkout دوباره کنترل و برای سفارش در انتظار پرداخت رزرو می‌شود.", symbol: "موجودی" },
+    { id: "verified-sellers", title: "فروشندگان بررسی‌شده", description: "مدارک، ضمانت و وضعیت فروشنده پیش از تأیید توسط مدیر کنترل می‌شود.", symbol: "فروشنده" },
+    { id: "order-history", title: "پیگیری سفارش", description: "اقلام، نشانی، روش ارسال و وضعیت پرداخت در تاریخچه سفارش قابل مشاهده است.", symbol: "سفارش" },
   ],
 };
 
 export async function getHomeContent(): Promise<HomeContent> {
-  return mockHomeContent;
+  return defaultHomeContent;
 }

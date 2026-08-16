@@ -16,27 +16,14 @@ export async function SiteHeader() {
   return (
     <header className="site-header">
       {messages.length > 0 ? (
-        <div
-          className="site-header__notice"
-          style={{
-            display: "flex",
-            gap: "0.25rem",
-            overflowX: "auto",
-            background: "transparent",
-            padding: 0,
-          }}
-          aria-label="پیام‌های فروشگاه"
-        >
+        <div className="site-header__notice" aria-label="پیام‌های فروشگاه">
           {messages.map((message) => (
             <a
               key={message.id}
               href={message.href || "/"}
               style={{
-                flex: "1 0 auto",
-                padding: "0.55rem 1rem",
                 backgroundColor: message.backgroundColor,
                 color: message.textColor,
-                textAlign: "center",
               }}
             >
               {message.text}
@@ -50,7 +37,11 @@ export async function SiteHeader() {
           href="/"
           aria-label="صفحه اصلی Miran Shop"
         >
-          Miran
+          <span className="site-header__brand-mark" aria-hidden="true">M</span>
+          <span className="site-header__brand-copy">
+            <strong>Miran</strong>
+            <small>SHOP</small>
+          </span>
         </a>
         <div className="site-header__search">
           <HeaderSearch />
