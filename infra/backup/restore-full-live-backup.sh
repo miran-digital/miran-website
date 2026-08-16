@@ -67,7 +67,7 @@ assert_bucket_empty() {
 
 restore_bucket() {
   local label="$1" source_dir="$2" endpoint="$3" bucket="$4" region="$5" access_key="$6" secret_key="$7" force_path_style="$8"
-  local config_file key object_rel content_type metadata_sha object_path actual_sha uploaded_length uploaded_meta expected_size
+  local config_file key object_rel expected_object_rel content_type metadata_sha object_path actual_sha uploaded_length uploaded_meta expected_size
   local -a put_args
 
   [[ "$endpoint" == https://* ]] || fail "$label object storage endpoint must use HTTPS"
@@ -80,6 +80,8 @@ restore_bucket() {
 
   while IFS=$'\t' read -r key object_rel content_type metadata_sha; do
     [[ -n "$key" ]] || continue
+    expected_object_rel="objects/$(printf '%s' "$key" | sha256sum | awk '{print $1}')"
+    [[ "$object_rel" == "$expected_object_rel" ]] || fail "$label object payload mapping is invalid for key: $key"
     object_path="$source_dir/$object_rel"
     [[ -f "$object_path" ]] || fail "Missing object payload for key: $key"
     actual_sha="$(sha256sum "$object_path" | awk '{print $1}')"
@@ -158,6 +160,16 @@ if "${COMPOSE[@]}" ps --services --status running | grep -Eq '^(web|api-gateway|
 fi
 
 "${COMPOSE[@]}" up -d postgres redis
+
+POSTGRES_READY=false
+for _ in {1..60}; do
+  if "${COMPOSE[@]}" exec -T postgres sh -ec 'pg_isready --username="$POSTGRES_USER" --dbname="$POSTGRES_DB"' >/dev/null 2>&1; then
+    POSTGRES_READY=true
+    break
+  fi
+  sleep 1
+done
+[[ "$POSTGRES_READY" == "true" ]] || fail "PostgreSQL did not become ready on the isolated restore host"
 
 TABLE_COUNT="$("${COMPOSE[@]}" exec -T postgres sh -ec \
   'psql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --tuples-only --no-align -c "SELECT count(*) FROM pg_tables WHERE schemaname = '\''public'\'';"' \
