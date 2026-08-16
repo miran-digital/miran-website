@@ -7,7 +7,10 @@ type OrderSummary = {
   status: string;
   subtotalIrr: number;
   discountIrr: number;
+  shippingIrr: number;
   totalIrr: number;
+  shippingMethodCode: string | null;
+  shippingMethodName: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -21,7 +24,7 @@ type OrderDetail = OrderSummary & {
     city: string;
     addressLine: string;
     postalCode: string;
-  };
+  } | null;
   items: Array<{
     id: string;
     productId: string;
@@ -110,6 +113,7 @@ export function OrderHistory() {
         <article key={order.id}>
           <strong>سفارش <bdi dir="ltr">{order.id}</bdi></strong>
           <p>{statusLabel(order.status)} — {toman(order.totalIrr)}</p>
+          {order.shippingMethodName ? <p>ارسال: {order.shippingMethodName} — {toman(order.shippingIrr)}</p> : null}
           <p>{new Date(order.createdAt).toLocaleString("fa-IR")}</p>
           <button type="button" disabled={loading} onClick={() => void openOrder(order.id)}>
             مشاهده جزئیات
@@ -124,6 +128,8 @@ export function OrderHistory() {
           <p>وضعیت: {statusLabel(detail.status)}</p>
           <p>جمع کالاها: {toman(detail.subtotalIrr)}</p>
           {detail.discountIrr > 0 ? <p>تخفیف: {toman(detail.discountIrr)}</p> : null}
+          <p>هزینه ارسال: {toman(detail.shippingIrr)}</p>
+          {detail.shippingMethodName ? <p>روش ارسال: {detail.shippingMethodName}</p> : null}
           <p>مبلغ نهایی: {toman(detail.totalIrr)}</p>
           <h4>اقلام</h4>
           <ul>
@@ -133,10 +139,14 @@ export function OrderHistory() {
               </li>
             ))}
           </ul>
-          <h4>نشانی تحویل</h4>
-          <p>
-            {detail.address.fullName} — {detail.address.province}، {detail.address.city}، {detail.address.addressLine} — <bdi dir="ltr">{detail.address.postalCode}</bdi>
-          </p>
+          {detail.address ? (
+            <>
+              <h4>نشانی تحویل</h4>
+              <p>
+                {detail.address.fullName} — {detail.address.province}، {detail.address.city}، {detail.address.addressLine} — <bdi dir="ltr">{detail.address.postalCode}</bdi>
+              </p>
+            </>
+          ) : null}
           {detail.payments.length > 0 ? (
             <>
               <h4>پرداخت‌ها</h4>
