@@ -2,6 +2,6 @@ import { startScopedPostgresService } from "../../service-runtime/scoped-postgre
 
 await startScopedPostgresService({
   serviceName: "auth-service",
-  exactPaths: ["/v1/me"],
+  exactPaths: ["/v1/me", "/v1/addresses"],
   prefixes: ["/v1/auth/", "/v1/addresses/"],
 });
