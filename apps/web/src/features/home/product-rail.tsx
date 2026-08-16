@@ -33,6 +33,7 @@ export function ProductRail({ section, tone = "default" }: ProductRailProps) {
 
         <div className={styles.rail}>
           {section.products.map((product) => {
+            const imageUrl = (product as typeof product & { imageUrl?: string }).imageUrl;
             const optionalProps = {
               ...(product.previousPrice
                 ? { previousPrice: product.previousPrice }
@@ -55,8 +56,17 @@ export function ProductRail({ section, tone = "default" }: ProductRailProps) {
                   price={product.price}
                   locale="fa-IR"
                   media={
-                    <div className={styles.media} aria-hidden="true">
-                      {product.mediaLabel}
+                    <div className={styles.media}>
+                      {imageUrl ? (
+                        <img
+                          src={imageUrl}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      ) : (
+                        <span aria-hidden="true">{product.mediaLabel}</span>
+                      )}
                     </div>
                   }
                   {...optionalProps}
