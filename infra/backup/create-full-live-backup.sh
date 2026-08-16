@@ -58,7 +58,7 @@ aws_s3() {
 
 backup_bucket() {
   local label="$1" endpoint="$2" bucket="$3" region="$4" access_key="$5" secret_key="$6" force_path_style="$7" destination="$8"
-  local config_file key_list key object_rel object_path head_line content_type metadata_sha actual_sha count
+  local config_file key_list key key_digest object_rel object_path head_line content_type metadata_sha actual_sha count
 
   [[ "$endpoint" == https://* ]] || fail "$label object storage endpoint must use HTTPS"
   mkdir -p "$destination/objects"
@@ -76,9 +76,9 @@ backup_bucket() {
   while IFS= read -r key; do
     [[ -n "$key" && "$key" != "None" ]] || continue
     [[ "$key" != *$'\t'* && "$key" != *$'\n'* ]] || fail "Unsupported object key contains a control separator"
-    object_rel="objects/${key}"
+    key_digest="$(printf '%s' "$key" | sha256sum | awk '{print $1}')"
+    object_rel="objects/${key_digest}"
     object_path="$destination/$object_rel"
-    mkdir -p "$(dirname "$object_path")"
 
     aws_s3 "$config_file" "$endpoint" "$access_key" "$secret_key" s3api get-object \
       --bucket "$bucket" --key "$key" "$object_path" >/dev/null
