@@ -1,0 +1,17 @@
+{$MIRAN_SITE_ADDRESS:almiran.ir} {
+  encode zstd gzip
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    X-Frame-Options "SAMEORIGIN"
+    -Server
+  }
+
+  reverse_proxy web:3000
+}
+
+{$MIRAN_WWW_SITE_ADDRESS:www.almiran.ir} {
+  redir {$MIRAN_CANONICAL_URL:https://almiran.ir}{uri} permanent
+}
