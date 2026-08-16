@@ -132,7 +132,15 @@ else
   fail "No deployed SHA marker found. Set MIRAN_BACKUP_TARGET_SHA explicitly only after verifying the live runtime."
 fi
 
+TOOLING_SHA="${MIRAN_BACKUP_TOOLING_SHA:-$(git rev-parse HEAD)}"
+TOOLING_SHA="$(git rev-parse "${TOOLING_SHA}^{commit}")"
+
 git cat-file -e "${TARGET_SHA}^{commit}" 2>/dev/null || fail "Production commit is unavailable locally: $TARGET_SHA"
+git cat-file -e "${TOOLING_SHA}^{commit}" 2>/dev/null || fail "Backup tooling commit is unavailable locally: $TOOLING_SHA"
+for tooling_path in infra/backup/restore-full-live-backup.sh infra/backup/verify-full-live-backup.sh; do
+  git cat-file -e "${TOOLING_SHA}:${tooling_path}" 2>/dev/null || fail "Backup tooling file is missing from tooling commit: $tooling_path"
+done
+
 TARGET_COMPOSE_BLOB="$(git rev-parse "${TARGET_SHA}:infra/docker-compose.production.yml")"
 CURRENT_COMPOSE_BLOB="$(git hash-object infra/docker-compose.production.yml)"
 [[ "$TARGET_COMPOSE_BLOB" == "$CURRENT_COMPOSE_BLOB" ]] || fail "Current production compose differs from the deployed commit. Use the deployed checkout before backup."
@@ -179,8 +187,9 @@ git show "${TARGET_SHA}:infra/caddy/Caddyfile" >"$BUNDLE_DIR/config/Caddyfile"
 git show "${TARGET_SHA}:infra/postgres/backup.sh" >"$BUNDLE_DIR/config/postgres-backup.sh"
 git show "${TARGET_SHA}:infra/postgres/restore.sh" >"$BUNDLE_DIR/config/postgres-restore.sh"
 git archive --format=tar "$TARGET_SHA" infra services/marketplace-core/migrations services/marketplace-core/postgres/migrations | tar -C "$BUNDLE_DIR/config/exact-production" -xf -
-cp infra/backup/restore-full-live-backup.sh "$BUNDLE_DIR/tools/restore-full-live-backup.sh"
-cp infra/backup/verify-full-live-backup.sh "$BUNDLE_DIR/tools/verify-full-live-backup.sh"
+git show "${TOOLING_SHA}:infra/backup/restore-full-live-backup.sh" >"$BUNDLE_DIR/tools/restore-full-live-backup.sh"
+git show "${TOOLING_SHA}:infra/backup/verify-full-live-backup.sh" >"$BUNDLE_DIR/tools/verify-full-live-backup.sh"
+chmod 700 "$BUNDLE_DIR/tools/restore-full-live-backup.sh" "$BUNDLE_DIR/tools/verify-full-live-backup.sh"
 cp "$MIRAN_ENV_FILE" "$BUNDLE_DIR/secrets/production.env"
 chmod 600 "$BUNDLE_DIR/secrets/production.env"
 
@@ -204,7 +213,7 @@ created_at_utc=${timestamp}
 production_commit=${TARGET_SHA}
 services=web,api-gateway,auth-service,catalog-service,admin-service,postgres,redis,caddy
 contains_production_secrets=true
-backup_tooling_commit=$(git rev-parse HEAD)
+backup_tooling_commit=${TOOLING_SHA}
 private_storage_bucket=${PRIVATE_BUCKET}
 public_storage_bucket=${PUBLIC_BUCKET}
 INFO
@@ -224,6 +233,12 @@ chmod 600 "$ARCHIVE_PATH"
 )
 chmod 600 "${ARCHIVE_PATH}.sha256"
 
+if [[ -n "${MIRAN_BACKUP_RESULT_FILE:-}" ]]; then
+  mkdir -p "$(dirname "$MIRAN_BACKUP_RESULT_FILE")"
+  printf '%s\n' "$ARCHIVE_PATH" >"$MIRAN_BACKUP_RESULT_FILE"
+  chmod 600 "$MIRAN_BACKUP_RESULT_FILE"
+fi
+
 if [[ "${MIRAN_BACKUP_KEEP_DIRECTORY:-false}" != "true" ]]; then
   rm -rf "$BUNDLE_DIR"
 fi
@@ -231,4 +246,5 @@ fi
 printf 'Full live backup created:\n%s\n' "$ARCHIVE_PATH"
 printf 'Archive checksum:\n%s\n' "${ARCHIVE_PATH}.sha256"
 printf 'Production commit:\n%s\n' "$TARGET_SHA"
+printf 'Backup tooling commit:\n%s\n' "$TOOLING_SHA"
 printf 'WARNING: The archive contains production secrets. Transfer/store it only through encrypted, access-controlled storage.\n'
