@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS shipping_methods (
 CREATE INDEX IF NOT EXISTS shipping_methods_active_sort_idx
   ON shipping_methods(active, sort_order);
 
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS source_cart_id TEXT REFERENCES carts(id) ON DELETE SET NULL;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_method_code TEXT;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_method_name TEXT;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_irr BIGINT NOT NULL DEFAULT 0 CHECK (shipping_irr >= 0);
+CREATE INDEX IF NOT EXISTS orders_source_cart_id_idx ON orders(source_cart_id);
