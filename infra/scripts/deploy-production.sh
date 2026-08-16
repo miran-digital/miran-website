@@ -99,9 +99,10 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
 fi
 
 git fetch --prune origin main
+FETCHED_MAIN_SHA="$(git rev-parse FETCH_HEAD)"
 TARGET_SHA="$(git rev-parse "${TARGET_SHA_INPUT}^{commit}")"
 git cat-file -e "${TARGET_SHA}^{commit}" 2>/dev/null || fail "target commit is not available after fetch: $TARGET_SHA_INPUT"
-git merge-base --is-ancestor "$TARGET_SHA" origin/main || fail "target commit is not reachable from origin/main"
+[[ "$TARGET_SHA" == "$FETCHED_MAIN_SHA" ]] || fail "target commit must equal the freshly fetched origin main commit"
 
 for required_path in \
   infra/docker-compose.production.yml \
