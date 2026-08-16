@@ -35,7 +35,13 @@ export type ServerCart = {
 
 type CartResponse = { cart?: ServerCart; error?: string; message?: string };
 
+const serverCartChangeEvent = "miran:server-cart-change";
 let guestMergeInFlight: Promise<ServerCart | null> | null = null;
+
+function broadcast(cart: ServerCart) {
+  window.dispatchEvent(new CustomEvent(serverCartChangeEvent, { detail: cart }));
+  return cart;
+}
 
 async function parseCart(response: Response) {
   const data = (await response.json()) as CartResponse;
@@ -45,6 +51,15 @@ async function parseCart(response: Response) {
     throw error;
   }
   return data.cart;
+}
+
+export function subscribeToServerCart(listener: (cart?: ServerCart) => void) {
+  const handle = (event: Event) => {
+    const cart = (event as CustomEvent<ServerCart>).detail;
+    listener(cart);
+  };
+  window.addEventListener(serverCartChangeEvent, handle);
+  return () => window.removeEventListener(serverCartChangeEvent, handle);
 }
 
 export async function getServerCart() {
@@ -58,7 +73,7 @@ export async function syncGuestCartToServer(): Promise<ServerCart | null> {
     if (guest.lines.length === 0) {
       const response = await fetch("/api/cart", { cache: "no-store" });
       if (response.status === 401) return null;
-      return parseCart(response);
+      return broadcast(await parseCart(response));
     }
 
     const response = await fetch("/api/cart/merge", {
@@ -74,7 +89,7 @@ export async function syncGuestCartToServer(): Promise<ServerCart | null> {
     if (response.status === 401) return null;
     const cart = await parseCart(response);
     clearGuestCart();
-    return cart;
+    return broadcast(cart);
   })();
 
   try {
@@ -99,7 +114,7 @@ export async function addCartLinePreferServer(input: GuestCartLineInput) {
       cart: null,
     };
   }
-  const cart = await parseCart(response);
+  const cart = broadcast(await parseCart(response));
   return { mode: "server" as const, itemCount: cart.itemCount, cart };
 }
 
@@ -109,16 +124,16 @@ export async function setServerCartLine(productId: string, quantity: number) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ quantity }),
   });
-  return parseCart(response);
+  return broadcast(await parseCart(response));
 }
 
 export async function removeServerCartLine(productId: string) {
   const response = await fetch(`/api/cart/items/${encodeURIComponent(productId)}`, {
     method: "DELETE",
   });
-  return parseCart(response);
+  return broadcast(await parseCart(response));
 }
 
 export async function clearServerCart() {
-  return parseCart(await fetch("/api/cart", { method: "DELETE" }));
+  return broadcast(await parseCart(await fetch("/api/cart", { method: "DELETE" })));
 }
