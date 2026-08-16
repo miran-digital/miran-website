@@ -1,0 +1,96 @@
+name: Production Read-only Preflight Tooling
+
+on:
+  pull_request:
+    paths:
+      - "infra/scripts/inspect-production.sh"
+      - ".github/workflows/production-readonly-preflight.yml"
+      - ".github/workflows/production-readonly-preflight-tooling.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate shell syntax
+        run: bash -n infra/scripts/inspect-production.sh
+
+      - name: Assert approved eight-service contract
+        run: |
+          set -euo pipefail
+          for service in web api-gateway auth-service catalog-service admin-service postgres redis caddy; do
+            grep -F "$service" infra/scripts/inspect-production.sh >/dev/null
+          done
+          grep -F 'production compose contains exactly eight approved services' infra/scripts/inspect-production.sh >/dev/null
+          grep -F 'all eight approved production services are running' infra/scripts/inspect-production.sh >/dev/null
+
+      - name: Reject destructive or write operations
+        run: |
+          set -euo pipefail
+          script=infra/scripts/inspect-production.sh
+
+          forbidden_tokens='pg_restore|pg_dump|put-object|delete-object|delete-objects|create-bucket|FLUSHALL|FLUSHDB|MIGRATE|BGSAVE|BGREWRITEAOF'
+          if grep -nE "$forbidden_tokens" "$script"; then
+            echo "Read-only production preflight contains a forbidden write/destructive token" >&2
+            exit 1
+          fi
+
+          rm_rf_lines="$(grep -nF 'rm -rf' "$script" || true)"
+          if [ -n "$rm_rf_lines" ]; then
+            unexpected_rm="$(printf '%s\n' "$rm_rf_lines" | grep -vF 'trap '\''rm -rf "$WORK_DIR"'\'' EXIT' || true)"
+            if [ -n "$unexpected_rm" ]; then
+              printf '%s\n' "$unexpected_rm" >&2
+              echo "Read-only production preflight contains an unapproved recursive delete" >&2
+              exit 1
+            fi
+            count="$(printf '%s\n' "$rm_rf_lines" | grep -c .)"
+            test "$count" = "1"
+          fi
+
+          if grep -nE '"\$\{COMPOSE\[@\]\}"[[:space:]]+(up|down|restart|stop|start|rm|kill|pull|build|run|create)' "$script"; then
+            echo "Read-only production preflight contains a mutating docker compose command" >&2
+            exit 1
+          fi
+
+          if grep -nE 'redis-cli([^\n]*)([[:space:]]SET[[:space:]]|[[:space:]]DEL[[:space:]]|[[:space:]]UNLINK[[:space:]]|[[:space:]]EXPIRE[[:space:]]|[[:space:]]PERSIST[[:space:]])' "$script"; then
+            echo "Read-only production preflight contains a mutating Redis command" >&2
+            exit 1
+          fi
+
+          if grep -nE 'curl([^\n]*)(-X|--request)[[:space:]]*(POST|PUT|PATCH|DELETE)' "$script"; then
+            echo "Read-only production preflight contains a mutating HTTP request" >&2
+            exit 1
+          fi
+
+          if grep -nE 'psql([^\n]*)(INSERT|UPDATE|DELETE|TRUNCATE|DROP|ALTER|CREATE|GRANT|REVOKE)' "$script"; then
+            echo "Read-only production preflight contains a mutating SQL command" >&2
+            exit 1
+          fi
+
+      - name: Assert secret-safe and payment-safe workflow defaults
+        run: |
+          set -euo pipefail
+          workflow=.github/workflows/production-readonly-preflight.yml
+          grep -F 'workflow_dispatch:' "$workflow" >/dev/null
+          grep -F 'environment: production' "$workflow" >/dev/null
+          grep -F 'default: false' "$workflow" >/dev/null
+          grep -F 'PRODUCTION_SSH_PRIVATE_KEY' "$workflow" >/dev/null
+          grep -F 'PRODUCTION_SSH_KNOWN_HOSTS' "$workflow" >/dev/null
+          grep -F 'StrictHostKeyChecking=yes' "$workflow" >/dev/null
+          grep -F 'MIRAN_ALLOW_ZARINPAL_PRODUCTION' "$workflow" >/dev/null
+
+      - name: Assert runtime checks are read-only health probes
+        run: |
+          set -euo pipefail
+          script=infra/scripts/inspect-production.sh
+          grep -F 'pg_isready' "$script" >/dev/null
+          grep -F 'SELECT count(*)' "$script" >/dev/null
+          grep -F 'PING' "$script" >/dev/null
+          grep -F 's3api head-bucket' "$script" >/dev/null
+          grep -F '/health' "$script" >/dev/null
+          grep -F 'caddy validate' "$script" >/dev/null
+          grep -F 'Zarinpal remains in sandbox mode' "$script" >/dev/null

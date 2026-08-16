@@ -1,0 +1,70 @@
+name: Production Read-only Preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      allow_zarinpal_production:
+        description: "Only after sandbox sign-off: allow preflight to accept Zarinpal production mode"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: miran-production-preflight
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate read-only preflight script
+        run: |
+          bash -n infra/scripts/inspect-production.sh
+          grep -F 'production read-only preflight' infra/scripts/inspect-production.sh >/dev/null
+
+      - name: Configure SSH with pinned host key
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+        run: |
+          test -n "$SSH_PRIVATE_KEY"
+          test -n "$SSH_KNOWN_HOSTS"
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_miran_preflight
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_miran_preflight ~/.ssh/known_hosts
+
+      - name: Inspect production runtime without changing data
+        env:
+          DEPLOY_HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
+          DEPLOY_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
+          DEPLOY_USER: ${{ secrets.PRODUCTION_SSH_USER }}
+          DEPLOY_PATH: ${{ secrets.PRODUCTION_DEPLOY_PATH }}
+          REMOTE_ENV_FILE: ${{ secrets.PRODUCTION_ENV_FILE }}
+          ALLOW_ZARINPAL_PRODUCTION: ${{ inputs.allow_zarinpal_production }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_PATH"
+          port="${DEPLOY_PORT:-22}"
+          env_file="${REMOTE_ENV_FILE:-/etc/miran/production.env}"
+          allow_payment="false"
+          if [ "$ALLOW_ZARINPAL_PRODUCTION" = "true" ]; then
+            allow_payment="true"
+          fi
+
+          ssh -i ~/.ssh/id_miran_preflight -p "$port" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd '$DEPLOY_PATH' && MIRAN_ENV_FILE='$env_file' MIRAN_PRODUCTION_REPO_ROOT='$DEPLOY_PATH' MIRAN_ALLOW_ZARINPAL_PRODUCTION='$allow_payment' bash -s" \
+            < infra/scripts/inspect-production.sh
