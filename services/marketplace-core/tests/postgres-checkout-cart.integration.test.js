@@ -91,8 +91,8 @@ test(
         [order.id],
       );
       assert.equal(stored.rows[0].shipping_method_code, value.shipping.code);
-      assert.equal(stored.rows[0].shipping_irr, 600_000);
-      assert.equal(stored.rows[0].total_irr, 8_600_000);
+      assert.equal(Number(stored.rows[0].shipping_irr), 600_000);
+      assert.equal(Number(stored.rows[0].total_irr), 8_600_000);
 
       const repeated = await value.checkout.createOrderFromCart(value.customer.id, {
         addressId: value.address.id,
