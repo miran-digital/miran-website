@@ -14,6 +14,7 @@ export type CatalogProductSummary = {
   title: string;
   href: string;
   mediaLabel: string;
+  imageUrl?: string;
   brandId: string;
   brandName: string;
   categorySlugs: readonly string[];
