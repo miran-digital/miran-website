@@ -1,0 +1,107 @@
+name: Production Deploy Safety
+
+on:
+  pull_request:
+    paths:
+      - "infra/scripts/deploy-production.sh"
+      - "infra/scripts/inspect-production.sh"
+      - "infra/backup/**"
+      - ".github/workflows/deploy-production.yml"
+      - ".github/workflows/production-deploy-safety.yml"
+      - "docs/operations/production-runbook.md"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate production shell syntax
+        run: |
+          set -euo pipefail
+          bash -n infra/scripts/deploy-production.sh
+          bash -n infra/scripts/inspect-production.sh
+          bash -n infra/backup/create-full-live-backup.sh
+          bash -n infra/backup/verify-full-live-backup.sh
+          bash -n infra/backup/restore-full-live-backup.sh
+
+      - name: Require exact reviewed deploy script over pinned SSH
+        run: |
+          set -euo pipefail
+          workflow=.github/workflows/deploy-production.yml
+          grep -F 'environment: production' "$workflow" >/dev/null
+          grep -F 'PRODUCTION_SSH_PRIVATE_KEY' "$workflow" >/dev/null
+          grep -F 'PRODUCTION_SSH_KNOWN_HOSTS' "$workflow" >/dev/null
+          grep -F 'StrictHostKeyChecking=yes' "$workflow" >/dev/null
+          grep -F 'bash -s -- '\''$GITHUB_SHA'\''' "$workflow" >/dev/null
+          grep -F '< infra/scripts/deploy-production.sh' "$workflow" >/dev/null
+          if grep -F "sh infra/scripts/deploy-production.sh" "$workflow"; then
+            echo "Workflow must not execute an older host-side deploy script." >&2
+            exit 1
+          fi
+
+      - name: Require preflight and verified full backup before checkout
+        run: |
+          set -euo pipefail
+          script=infra/scripts/deploy-production.sh
+          preflight_line="$(grep -nF 'bash "$TMP_DIR/inspect-production.sh"' "$script" | head -n1 | cut -d: -f1)"
+          backup_line="$(grep -nF 'bash "$TMP_DIR/create-full-live-backup.sh"' "$script" | head -n1 | cut -d: -f1)"
+          verify_line="$(grep -nF 'MIRAN_BACKUP_ARCHIVE="$FULL_BACKUP_ARCHIVE" bash "$TMP_DIR/verify-full-live-backup.sh"' "$script" | head -n1 | cut -d: -f1)"
+          checkout_line="$(grep -nF 'git checkout --detach "$TARGET_SHA"' "$script" | head -n1 | cut -d: -f1)"
+          test -n "$preflight_line"
+          test -n "$backup_line"
+          test -n "$verify_line"
+          test -n "$checkout_line"
+          test "$preflight_line" -lt "$backup_line"
+          test "$backup_line" -lt "$verify_line"
+          test "$verify_line" -lt "$checkout_line"
+          if grep -F 'miran-predeploy-' "$script"; then
+            echo "Legacy PostgreSQL-only predeploy backup must not replace the full live backup gate." >&2
+            exit 1
+          fi
+
+      - name: Require fail-closed empty-host handling
+        run: |
+          set -euo pipefail
+          workflow=.github/workflows/deploy-production.yml
+          script=infra/scripts/deploy-production.sh
+          grep -F 'allow_initial_empty_host:' "$workflow" >/dev/null
+          grep -A5 -F 'allow_initial_empty_host:' "$workflow" | grep -F 'default: false' >/dev/null
+          grep -F 'MIRAN_ALLOW_INITIAL_EMPTY_HOST' "$script" >/dev/null
+          grep -F 'stopped production containers exist' "$script" >/dev/null
+          for volume in miran_postgres_data miran_redis_data miran_caddy_data miran_caddy_config; do
+            grep -F "$volume" "$script" >/dev/null
+          done
+          grep -F 'existing Miran Docker volume detected' "$script" >/dev/null
+
+      - name: Require payment and indexing safety locks
+        run: |
+          set -euo pipefail
+          script=infra/scripts/deploy-production.sh
+          grep -F 'ZARINPAL_SANDBOX must remain true during production rollout' "$script" >/dev/null
+          grep -F 'SITE_INDEXABLE must remain false until live verification is complete' "$script" >/dev/null
+          grep -F 'MIRAN_ALLOW_ZARINPAL_PRODUCTION=false' "$script" >/dev/null
+
+      - name: Require portable full-backup tooling
+        run: |
+          set -euo pipefail
+          backup=infra/backup/create-full-live-backup.sh
+          deploy=infra/scripts/deploy-production.sh
+          grep -F 'MIRAN_BACKUP_TOOLING_SHA' "$backup" >/dev/null
+          grep -F 'MIRAN_BACKUP_RESULT_FILE' "$backup" >/dev/null
+          grep -F 'git show "${TOOLING_SHA}:infra/backup/restore-full-live-backup.sh"' "$backup" >/dev/null
+          grep -F 'git show "${TOOLING_SHA}:infra/backup/verify-full-live-backup.sh"' "$backup" >/dev/null
+          grep -F 'MIRAN_BACKUP_TOOLING_SHA="$TARGET_SHA"' "$deploy" >/dev/null
+          grep -F 'MIRAN_BACKUP_RESULT_FILE="$TMP_DIR/full-backup-path"' "$deploy" >/dev/null
+
+      - name: Require exact eight-service production contract
+        run: |
+          set -euo pipefail
+          script=infra/scripts/deploy-production.sh
+          for service in web api-gateway auth-service catalog-service admin-service postgres redis caddy; do
+            grep -F "$service" "$script" >/dev/null
+          done
+          grep -F 'target production compose does not contain exactly the approved eight services' "$script" >/dev/null
