@@ -14,6 +14,14 @@ function positiveInteger(value, fallback, { min = 1, max = 100 } = {}) {
   return number;
 }
 
+function hasDiscretePostgresConfig() {
+  return Boolean(
+    process.env.PGHOST &&
+      process.env.PGUSER &&
+      process.env.PGDATABASE,
+  );
+}
+
 export function openPostgresPool({
   connectionString = process.env.DATABASE_URL,
   max = positiveInteger(process.env.DATABASE_POOL_MAX, 10, { max: 50 }),
@@ -21,19 +29,26 @@ export function openPostgresPool({
   connectionTimeoutMillis = positiveInteger(process.env.DATABASE_CONNECTION_TIMEOUT_MS, 5_000, { max: 60_000 }),
   applicationName = process.env.DATABASE_APPLICATION_NAME || "miran-marketplace-core",
 } = {}) {
-  if (!connectionString) {
-    const error = new Error("DATABASE_URL is required for PostgreSQL");
+  if (!connectionString && !hasDiscretePostgresConfig()) {
+    const error = new Error(
+      "PostgreSQL connection is not configured. Set DATABASE_URL or PGHOST/PGUSER/PGDATABASE.",
+    );
     error.code = "DATABASE_NOT_CONFIGURED";
     throw error;
   }
 
-  const pool = new Pool({
-    connectionString,
+  const poolOptions = {
     max,
     idleTimeoutMillis,
     connectionTimeoutMillis,
     application_name: applicationName,
-  });
+  };
+
+  if (connectionString) {
+    poolOptions.connectionString = connectionString;
+  }
+
+  const pool = new Pool(poolOptions);
 
   pool.on("error", (error) => {
     console.error("Unexpected PostgreSQL idle-client error", {
