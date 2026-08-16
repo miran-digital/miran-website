@@ -39,8 +39,55 @@ CREATE TABLE shipping_methods (
 
 CREATE INDEX shipping_methods_active_sort_idx ON shipping_methods(active, sort_order);
 
-ALTER TABLE orders ADD COLUMN source_cart_id TEXT REFERENCES carts(id) ON DELETE SET NULL;
 ALTER TABLE orders ADD COLUMN shipping_method_code TEXT;
 ALTER TABLE orders ADD COLUMN shipping_method_name TEXT;
 ALTER TABLE orders ADD COLUMN shipping_irr INTEGER NOT NULL DEFAULT 0 CHECK (shipping_irr >= 0);
-CREATE INDEX orders_source_cart_id_idx ON orders(source_cart_id);
+
+CREATE TRIGGER orders_paid_cart_cleanup
+AFTER UPDATE OF status ON orders
+FOR EACH ROW
+WHEN NEW.status='PAID' AND OLD.status <> 'PAID'
+BEGIN
+  UPDATE cart_items
+  SET quantity = quantity - COALESCE((
+        SELECT oi.quantity
+        FROM order_items oi
+        WHERE oi.order_id=NEW.id AND oi.product_id=cart_items.product_id
+        LIMIT 1
+      ),0),
+      updated_at=CURRENT_TIMESTAMP
+  WHERE cart_id=(
+      SELECT id FROM carts
+      WHERE user_id=NEW.user_id AND status='ACTIVE'
+      LIMIT 1
+    )
+    AND EXISTS(
+      SELECT 1 FROM order_items oi
+      WHERE oi.order_id=NEW.id AND oi.product_id=cart_items.product_id
+    )
+    AND quantity > (
+      SELECT oi.quantity FROM order_items oi
+      WHERE oi.order_id=NEW.id AND oi.product_id=cart_items.product_id
+      LIMIT 1
+    );
+
+  DELETE FROM cart_items
+  WHERE cart_id=(
+      SELECT id FROM carts
+      WHERE user_id=NEW.user_id AND status='ACTIVE'
+      LIMIT 1
+    )
+    AND EXISTS(
+      SELECT 1 FROM order_items oi
+      WHERE oi.order_id=NEW.id AND oi.product_id=cart_items.product_id
+    )
+    AND quantity <= (
+      SELECT oi.quantity FROM order_items oi
+      WHERE oi.order_id=NEW.id AND oi.product_id=cart_items.product_id
+      LIMIT 1
+    );
+
+  UPDATE carts
+  SET updated_at=CURRENT_TIMESTAMP
+  WHERE user_id=NEW.user_id AND status='ACTIVE';
+END;
