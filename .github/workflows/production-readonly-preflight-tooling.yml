@@ -33,10 +33,22 @@ jobs:
           set -euo pipefail
           script=infra/scripts/inspect-production.sh
 
-          forbidden_tokens='pg_restore|pg_dump|put-object|delete-object|delete-objects|create-bucket|rm -rf|FLUSHALL|FLUSHDB|MIGRATE|BGSAVE|BGREWRITEAOF'
+          forbidden_tokens='pg_restore|pg_dump|put-object|delete-object|delete-objects|create-bucket|FLUSHALL|FLUSHDB|MIGRATE|BGSAVE|BGREWRITEAOF'
           if grep -nE "$forbidden_tokens" "$script"; then
             echo "Read-only production preflight contains a forbidden write/destructive token" >&2
             exit 1
+          fi
+
+          rm_rf_lines="$(grep -nF 'rm -rf' "$script" || true)"
+          if [ -n "$rm_rf_lines" ]; then
+            unexpected_rm="$(printf '%s\n' "$rm_rf_lines" | grep -vF 'trap '\''rm -rf "$WORK_DIR"'\'' EXIT' || true)"
+            if [ -n "$unexpected_rm" ]; then
+              printf '%s\n' "$unexpected_rm" >&2
+              echo "Read-only production preflight contains an unapproved recursive delete" >&2
+              exit 1
+            fi
+            count="$(printf '%s\n' "$rm_rf_lines" | grep -c .)"
+            test "$count" = "1"
           fi
 
           if grep -nE '"\$\{COMPOSE\[@\]\}"[[:space:]]+(up|down|restart|stop|start|rm|kill|pull|build|run|create)' "$script"; then
