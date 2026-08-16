@@ -117,12 +117,12 @@ compose() {
 }
 
 mapfile -t EXPECTED_SORTED < <(printf '%s\n' "${EXPECTED_SERVICES[@]}" | LC_ALL=C sort)
-mapfile -t CURRENT_CONFIGURED < <(compose config --services | LC_ALL=C sort)
+mapfile -t CURRENT_CONFIGURED < <(compose config --services | awk 'NF' | LC_ALL=C sort)
 [[ "${CURRENT_CONFIGURED[*]}" == "${EXPECTED_SORTED[*]}" ]] || fail "current production checkout does not contain exactly the approved eight services"
 
 current_sha="$(git rev-parse HEAD)"
-mapfile -t RUNNING_SERVICES < <(compose ps --services --status running | LC_ALL=C sort)
-mapfile -t EXISTING_CONTAINERS < <(compose ps -a -q)
+mapfile -t RUNNING_SERVICES < <(compose ps --services --status running | awk 'NF' | LC_ALL=C sort)
+mapfile -t EXISTING_CONTAINERS < <(compose ps -a -q | awk 'NF')
 running_count="${#RUNNING_SERVICES[@]}"
 existing_count="${#EXISTING_CONTAINERS[@]}"
 
@@ -178,7 +178,7 @@ fi
 git checkout --detach "$TARGET_SHA"
 
 [[ -f "$COMPOSE_FILE" ]] || fail "target commit does not contain the production compose file"
-mapfile -t TARGET_SERVICES < <(compose config --services | LC_ALL=C sort)
+mapfile -t TARGET_SERVICES < <(compose config --services | awk 'NF' | LC_ALL=C sort)
 [[ "${TARGET_SERVICES[*]}" == "${EXPECTED_SORTED[*]}" ]] || fail "target production compose does not contain exactly the approved eight services"
 
 compose up -d --build --remove-orphans
@@ -210,7 +210,7 @@ if [[ "$ready" -ne 1 ]]; then
   exit 1
 fi
 
-mapfile -t FINAL_RUNNING < <(compose ps --status running --services | LC_ALL=C sort)
+mapfile -t FINAL_RUNNING < <(compose ps --status running --services | awk 'NF' | LC_ALL=C sort)
 [[ "${FINAL_RUNNING[*]}" == "${EXPECTED_SORTED[*]}" ]] || fail "final running service set is not exactly the approved eight services"
 
 api_health="$(compose exec -T api-gateway node -e "fetch('http://127.0.0.1:3001/health').then(async r=>{if(!r.ok)process.exit(1);process.stdout.write(await r.text())}).catch(()=>process.exit(1))")"
