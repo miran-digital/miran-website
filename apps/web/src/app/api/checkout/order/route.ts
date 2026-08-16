@@ -5,8 +5,8 @@ import { SESSION_COOKIE_NAME } from "@/lib/auth/session-cookie";
 
 type OrderInput = {
   addressId: string;
+  shippingMethodCode: string;
   idempotencyKey: string;
-  items: Array<{ productId: string; quantity: number }>;
 };
 
 export async function POST(request: Request) {
@@ -21,33 +21,17 @@ export async function POST(request: Request) {
   try {
     const input = (await request.json()) as Partial<OrderInput>;
     const addressId = String(input.addressId || "");
+    const shippingMethodCode = String(input.shippingMethodCode || "");
     const idempotencyKey = String(input.idempotencyKey || "");
-    const items = Array.isArray(input.items) ? input.items : [];
 
-    if (!addressId || idempotencyKey.length < 8 || items.length === 0 || items.length > 100) {
+    if (!addressId || !shippingMethodCode || idempotencyKey.length < 8) {
       return NextResponse.json({ error: "INVALID_INPUT" }, { status: 400 });
     }
 
-    const normalizedItems = items.map((item) => ({
-      productId: String(item.productId || ""),
-      quantity: Number(item.quantity),
-    }));
-    if (
-      normalizedItems.some(
-        (item) =>
-          !item.productId ||
-          !Number.isSafeInteger(item.quantity) ||
-          item.quantity < 1 ||
-          item.quantity > 100,
-      )
-    ) {
-      return NextResponse.json({ error: "INVALID_INPUT" }, { status: 400 });
-    }
-
-    const order = await apiRequest("/v1/orders", {
+    const order = await apiRequest("/v1/checkout/orders", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
-      body: { addressId, idempotencyKey, items: normalizedItems },
+      body: { addressId, shippingMethodCode, idempotencyKey },
     });
     return NextResponse.json({ order }, { status: 201 });
   } catch (error) {
