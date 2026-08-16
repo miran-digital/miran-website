@@ -58,7 +58,7 @@ aws_s3() {
 
 backup_bucket() {
   local label="$1" endpoint="$2" bucket="$3" region="$4" access_key="$5" secret_key="$6" force_path_style="$7" destination="$8"
-  local config_file keys key object_rel object_path head_line content_type metadata_sha actual_sha count
+  local config_file key_list key object_rel object_path head_line content_type metadata_sha actual_sha count
 
   [[ "$endpoint" == https://* ]] || fail "$label object storage endpoint must use HTTPS"
   mkdir -p "$destination/objects"
@@ -68,37 +68,37 @@ backup_bucket() {
   aws_config_for "$region" "$force_path_style" "$config_file"
 
   aws_s3 "$config_file" "$endpoint" "$access_key" "$secret_key" s3api head-bucket --bucket "$bucket" >/dev/null
-  keys="$(aws_s3 "$config_file" "$endpoint" "$access_key" "$secret_key" s3api list-objects-v2 \
-    --bucket "$bucket" --query 'Contents[].Key' --output text)"
+  key_list="$WORK_DIR/${label}-keys.txt"
+  aws_s3 "$config_file" "$endpoint" "$access_key" "$secret_key" s3api list-objects-v2 \
+    --bucket "$bucket" --query 'Contents[].Key' --output text | tr '\t' '\n' >"$key_list"
 
   count=0
-  if [[ -n "$keys" && "$keys" != "None" ]]; then
-    for key in $keys; do
-      [[ "$key" != *$'\t'* && "$key" != *$'\n'* ]] || fail "Unsupported object key contains a control separator"
-      object_rel="objects/${key}"
-      object_path="$destination/$object_rel"
-      mkdir -p "$(dirname "$object_path")"
+  while IFS= read -r key; do
+    [[ -n "$key" && "$key" != "None" ]] || continue
+    [[ "$key" != *$'\t'* && "$key" != *$'\n'* ]] || fail "Unsupported object key contains a control separator"
+    object_rel="objects/${key}"
+    object_path="$destination/$object_rel"
+    mkdir -p "$(dirname "$object_path")"
 
-      aws_s3 "$config_file" "$endpoint" "$access_key" "$secret_key" s3api get-object \
-        --bucket "$bucket" --key "$key" "$object_path" >/dev/null
+    aws_s3 "$config_file" "$endpoint" "$access_key" "$secret_key" s3api get-object \
+      --bucket "$bucket" --key "$key" "$object_path" >/dev/null
 
-      head_line="$(aws_s3 "$config_file" "$endpoint" "$access_key" "$secret_key" s3api head-object \
-        --bucket "$bucket" --key "$key" --query '[ContentType,Metadata.sha256]' --output text)"
-      content_type="${head_line%%$'\t'*}"
-      metadata_sha="${head_line#*$'\t'}"
-      [[ "$metadata_sha" != "$head_line" ]] || metadata_sha="None"
-      [[ -n "$content_type" && "$content_type" != "None" ]] || content_type="application/octet-stream"
-      [[ -n "$metadata_sha" ]] || metadata_sha="None"
+    head_line="$(aws_s3 "$config_file" "$endpoint" "$access_key" "$secret_key" s3api head-object \
+      --bucket "$bucket" --key "$key" --query '[ContentType,Metadata.sha256]' --output text)"
+    content_type="${head_line%%$'\t'*}"
+    metadata_sha="${head_line#*$'\t'}"
+    [[ "$metadata_sha" != "$head_line" ]] || metadata_sha="None"
+    [[ -n "$content_type" && "$content_type" != "None" ]] || content_type="application/octet-stream"
+    [[ -n "$metadata_sha" ]] || metadata_sha="None"
 
-      actual_sha="$(sha256sum "$object_path" | awk '{print $1}')"
-      if [[ "$metadata_sha" != "None" && "$metadata_sha" != "$actual_sha" ]]; then
-        fail "$label object hash metadata mismatch for key: $key"
-      fi
+    actual_sha="$(sha256sum "$object_path" | awk '{print $1}')"
+    if [[ "$metadata_sha" != "None" && "$metadata_sha" != "$actual_sha" ]]; then
+      fail "$label object hash metadata mismatch for key: $key"
+    fi
 
-      printf '%s\t%s\t%s\t%s\n' "$key" "$object_rel" "$content_type" "$metadata_sha" >>"$destination/objects.tsv"
-      count=$((count + 1))
-    done
-  fi
+    printf '%s\t%s\t%s\t%s\n' "$key" "$object_rel" "$content_type" "$metadata_sha" >>"$destination/objects.tsv"
+    count=$((count + 1))
+  done <"$key_list"
 
   printf '%s\n' "$count" >"$destination/object-count.txt"
   aws_s3 "$config_file" "$endpoint" "$access_key" "$secret_key" s3api list-objects-v2 \
@@ -112,6 +112,7 @@ require_command sha256sum
 require_command awk
 require_command grep
 require_command aws
+require_command tr
 
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || fail "Run this script from the Miran Shop repository"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -177,7 +178,7 @@ git show "${TARGET_SHA}:infra/docker-compose.production.yml" >"$BUNDLE_DIR/confi
 git show "${TARGET_SHA}:infra/caddy/Caddyfile" >"$BUNDLE_DIR/config/Caddyfile"
 git show "${TARGET_SHA}:infra/postgres/backup.sh" >"$BUNDLE_DIR/config/postgres-backup.sh"
 git show "${TARGET_SHA}:infra/postgres/restore.sh" >"$BUNDLE_DIR/config/postgres-restore.sh"
-git archive --format=tar "$TARGET_SHA" infra services/marketplace-core/src/migrations | tar -C "$BUNDLE_DIR/config/exact-production" -xf -
+git archive --format=tar "$TARGET_SHA" infra services/marketplace-core/migrations services/marketplace-core/postgres/migrations | tar -C "$BUNDLE_DIR/config/exact-production" -xf -
 cp infra/backup/restore-full-live-backup.sh "$BUNDLE_DIR/tools/restore-full-live-backup.sh"
 cp infra/backup/verify-full-live-backup.sh "$BUNDLE_DIR/tools/verify-full-live-backup.sh"
 cp "$MIRAN_ENV_FILE" "$BUNDLE_DIR/secrets/production.env"
