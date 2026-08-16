@@ -2,6 +2,12 @@ name: Deploy Production
 
 on:
   workflow_dispatch:
+    inputs:
+      allow_initial_empty_host:
+        description: "Allow first deployment only when the target host has no Miran containers or persistent volumes"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -13,7 +19,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     environment: production
     steps:
       - uses: actions/checkout@v4
@@ -22,7 +28,11 @@ jobs:
         run: |
           git cat-file -e "${GITHUB_SHA}^{commit}"
           test -f infra/scripts/deploy-production.sh
+          test -f infra/scripts/inspect-production.sh
+          test -f infra/backup/create-full-live-backup.sh
+          test -f infra/backup/verify-full-live-backup.sh
           test -f infra/docker-compose.production.yml
+          bash -n infra/scripts/deploy-production.sh
 
       - name: Configure SSH with pinned host key
         env:
@@ -37,7 +47,7 @@ jobs:
           printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/id_miran_deploy ~/.ssh/known_hosts
 
-      - name: Deploy exact workflow commit with backup-first remote script
+      - name: Preflight, full-backup, verify and deploy exact workflow commit
         env:
           DEPLOY_HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
           DEPLOY_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
@@ -45,18 +55,34 @@ jobs:
           DEPLOY_PATH: ${{ secrets.PRODUCTION_DEPLOY_PATH }}
           REMOTE_ENV_FILE: ${{ secrets.PRODUCTION_ENV_FILE }}
           REMOTE_BACKUP_DIR: ${{ secrets.PRODUCTION_BACKUP_DIR }}
+          ALLOW_INITIAL_EMPTY_HOST: ${{ inputs.allow_initial_empty_host }}
         run: |
+          set -euo pipefail
           test -n "$DEPLOY_HOST"
           test -n "$DEPLOY_USER"
           test -n "$DEPLOY_PATH"
           port="${DEPLOY_PORT:-22}"
           env_file="${REMOTE_ENV_FILE:-/etc/miran/production.env}"
           backup_dir="${REMOTE_BACKUP_DIR:-/var/backups/miran}"
+          allow_initial="false"
+          if [ "$ALLOW_INITIAL_EMPTY_HOST" = "true" ]; then
+            allow_initial="true"
+          fi
 
-          # Values below come from protected GitHub Environment secrets. Quoting
-          # prohibits the remote shell from interpreting spaces in paths.
+          for remote_value in "$DEPLOY_PATH" "$env_file" "$backup_dir"; do
+            case "$remote_value" in
+              *"'"*)
+                echo "Production path values must not contain single quotes." >&2
+                exit 1
+                ;;
+            esac
+          done
+
+          # Execute the deploy script from this exact reviewed workflow commit by
+          # streaming it over pinned SSH. Do not trust an older copy on the host.
           ssh -i ~/.ssh/id_miran_deploy -p "$port" \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
             "$DEPLOY_USER@$DEPLOY_HOST" \
-            "cd '$DEPLOY_PATH' && MIRAN_ENV_FILE='$env_file' MIRAN_BACKUP_DIR='$backup_dir' sh infra/scripts/deploy-production.sh '$GITHUB_SHA'"
+            "cd '$DEPLOY_PATH' && MIRAN_ENV_FILE='$env_file' MIRAN_BACKUP_DIR='$backup_dir' MIRAN_ALLOW_INITIAL_EMPTY_HOST='$allow_initial' bash -s -- '$GITHUB_SHA'" \
+            < infra/scripts/deploy-production.sh
