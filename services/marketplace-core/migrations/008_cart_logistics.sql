@@ -48,6 +48,22 @@ AFTER UPDATE OF status ON orders
 FOR EACH ROW
 WHEN NEW.status='PAID' AND OLD.status <> 'PAID'
 BEGIN
+  DELETE FROM cart_items
+  WHERE cart_id=(
+      SELECT id FROM carts
+      WHERE user_id=NEW.user_id AND status='ACTIVE'
+      LIMIT 1
+    )
+    AND EXISTS(
+      SELECT 1 FROM order_items oi
+      WHERE oi.order_id=NEW.id AND oi.product_id=cart_items.product_id
+    )
+    AND quantity <= (
+      SELECT oi.quantity FROM order_items oi
+      WHERE oi.order_id=NEW.id AND oi.product_id=cart_items.product_id
+      LIMIT 1
+    );
+
   UPDATE cart_items
   SET quantity = quantity - COALESCE((
         SELECT oi.quantity
@@ -66,22 +82,6 @@ BEGIN
       WHERE oi.order_id=NEW.id AND oi.product_id=cart_items.product_id
     )
     AND quantity > (
-      SELECT oi.quantity FROM order_items oi
-      WHERE oi.order_id=NEW.id AND oi.product_id=cart_items.product_id
-      LIMIT 1
-    );
-
-  DELETE FROM cart_items
-  WHERE cart_id=(
-      SELECT id FROM carts
-      WHERE user_id=NEW.user_id AND status='ACTIVE'
-      LIMIT 1
-    )
-    AND EXISTS(
-      SELECT 1 FROM order_items oi
-      WHERE oi.order_id=NEW.id AND oi.product_id=cart_items.product_id
-    )
-    AND quantity <= (
       SELECT oi.quantity FROM order_items oi
       WHERE oi.order_id=NEW.id AND oi.product_id=cart_items.product_id
       LIMIT 1
