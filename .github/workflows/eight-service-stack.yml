@@ -14,6 +14,7 @@ jobs:
       POSTGRES_DB: miran_eight_service_ci
       POSTGRES_USER: miran
       POSTGRES_PASSWORD: miran_eight_service_ci_password
+      REDIS_PASSWORD: miran_eight_service_redis_ci_password
       DATABASE_POOL_MAX: 4
       SITE_INDEXABLE: "false"
       MIRAN_PUBLIC_URL: http://localhost:3800
