@@ -152,3 +152,31 @@ test(
     }
   },
 );
+
+test(
+  "paid order removes only purchased quantity from current active cart",
+  { skip: !databaseUrl },
+  async () => {
+    const value = await fixture();
+    try {
+      await value.cart.setLine(value.customer.id, value.productId, 2);
+      const order = await value.checkout.createOrderFromCart(value.customer.id, {
+        addressId: value.address.id,
+        shippingMethodCode: value.shipping.code,
+        idempotencyKey: `checkout-cleanup-${value.suffix}`,
+      });
+
+      await value.cart.setLine(value.customer.id, value.productId, 3);
+      await value.pool.query(
+        "UPDATE orders SET status='PAID',updated_at=CURRENT_TIMESTAMP WHERE id=$1",
+        [order.id],
+      );
+
+      const cart = await value.cart.get(value.customer.id);
+      assert.equal(cart.lines.length, 1);
+      assert.equal(cart.lines[0].quantity, 1);
+    } finally {
+      await value.pool.end();
+    }
+  },
+);
