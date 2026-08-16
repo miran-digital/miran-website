@@ -1,0 +1,119 @@
+name: Production Readiness
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-container-backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: miran_prod_ci
+          POSTGRES_USER: miran
+          POSTGRES_PASSWORD: miran_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U miran -d miran_prod_ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate ops scripts
+        run: |
+          sh -n infra/postgres/backup.sh
+          sh -n infra/postgres/restore.sh
+
+      - name: Build production API image
+        run: docker build -f services/marketplace-core/Dockerfile -t miran-marketplace-core:ci .
+
+      - name: Start production API container
+        run: |
+          docker run -d --rm \
+            --name miran-api-ci \
+            --network host \
+            -e NODE_ENV=production \
+            -e PORT=3101 \
+            -e DATABASE_URL=postgresql://miran:miran_ci_password@127.0.0.1:5432/miran_prod_ci \
+            -e MIRAN_PUBLIC_URL=https://almiran.ir \
+            miran-marketplace-core:ci
+
+          ready=0
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3101/health >/tmp/miran-health.json; then
+              ready=1
+              break
+            fi
+            if ! docker ps --format '{{.Names}}' | grep -qx miran-api-ci; then
+              docker logs miran-api-ci || true
+              exit 1
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            docker logs miran-api-ci || true
+            exit 1
+          fi
+          grep -q '"database":"postgresql"' /tmp/miran-health.json
+
+      - name: Create and verify PostgreSQL backup
+        run: |
+          mkdir -p .ci-backups
+          docker run --rm --network host \
+            -e PGHOST=127.0.0.1 \
+            -e PGPORT=5432 \
+            -e PGUSER=miran \
+            -e PGPASSWORD=miran_ci_password \
+            -e PGDATABASE=miran_prod_ci \
+            -e BACKUP_DIR=/backups \
+            -v "$PWD/infra/postgres:/scripts:ro" \
+            -v "$PWD/.ci-backups:/backups" \
+            postgres:17-alpine sh /scripts/backup.sh
+
+          backup_path="$(find .ci-backups -maxdepth 1 -name 'miran-*.dump' -type f | head -n 1)"
+          test -n "$backup_path"
+          test -s "$backup_path"
+          test -s "${backup_path}.sha256"
+
+      - name: Restore backup into a clean database
+        run: |
+          docker run --rm --network host \
+            -e PGHOST=127.0.0.1 \
+            -e PGPORT=5432 \
+            -e PGUSER=miran \
+            -e PGPASSWORD=miran_ci_password \
+            postgres:17-alpine sh -c 'dropdb --if-exists miran_restore && createdb miran_restore'
+
+          backup_path="$(find .ci-backups -maxdepth 1 -name 'miran-*.dump' -type f | head -n 1)"
+          backup_name="$(basename "$backup_path")"
+          docker run --rm --network host \
+            -e PGHOST=127.0.0.1 \
+            -e PGPORT=5432 \
+            -e PGUSER=miran \
+            -e PGPASSWORD=miran_ci_password \
+            -e PGDATABASE=miran_restore \
+            -e BACKUP_FILE="/backups/${backup_name}" \
+            -v "$PWD/infra/postgres:/scripts:ro" \
+            -v "$PWD/.ci-backups:/backups" \
+            postgres:17-alpine sh /scripts/restore.sh
+
+          table_count="$(docker run --rm --network host \
+            -e PGHOST=127.0.0.1 \
+            -e PGPORT=5432 \
+            -e PGUSER=miran \
+            -e PGPASSWORD=miran_ci_password \
+            -e PGDATABASE=miran_restore \
+            postgres:17-alpine psql -Atc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'")"
+          test "$table_count" -ge 18
+
+      - name: Stop API container
+        if: always()
+        run: docker stop miran-api-ci || true

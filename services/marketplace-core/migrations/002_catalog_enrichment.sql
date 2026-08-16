@@ -1,0 +1,4 @@
+ALTER TABLE products ADD COLUMN brand TEXT NOT NULL DEFAULT '';
+ALTER TABLE products ADD COLUMN highlights_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE products ADD COLUMN specifications_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE categories ADD COLUMN description TEXT NOT NULL DEFAULT '';

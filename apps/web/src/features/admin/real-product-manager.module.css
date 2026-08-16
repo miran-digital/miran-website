@@ -1,0 +1,96 @@
+.section {
+  padding-block: 1.5rem;
+  background: var(--miran-color-surface-muted);
+}
+
+.panel {
+  display: grid;
+  gap: 1.25rem;
+  border: 1px solid var(--miran-color-border);
+  border-radius: var(--miran-radius-lg);
+  padding: clamp(1rem, 3vw, 2rem);
+  background: var(--miran-color-surface);
+  box-shadow: var(--miran-shadow-sm);
+}
+
+.heading h2,
+.heading p,
+.card h3,
+.card p {
+  margin: 0;
+}
+
+.heading p,
+.note,
+.meta {
+  color: var(--miran-color-text-muted);
+}
+
+.grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.form,
+.card {
+  display: grid;
+  gap: 0.75rem;
+  border: 1px solid var(--miran-color-border);
+  border-radius: var(--miran-radius-md);
+  padding: 1rem;
+}
+
+.form label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 700;
+}
+
+.form input,
+.form select,
+.card input {
+  min-height: 2.75rem;
+  border: 1px solid var(--miran-color-border);
+  border-radius: var(--miran-radius-md);
+  padding-inline: 0.75rem;
+  background: var(--miran-color-surface);
+  color: var(--miran-color-text);
+  font: inherit;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.actions button,
+.form button {
+  min-height: 2.75rem;
+  border: 1px solid var(--miran-color-brand);
+  border-radius: var(--miran-radius-md);
+  padding-inline: 1rem;
+  background: var(--miran-color-brand);
+  color: white;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.actions button:disabled,
+.form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.status {
+  font-weight: 800;
+}
+
+@media (min-width: 64rem) {
+  .grid {
+    grid-template-columns: minmax(18rem, 0.75fr) minmax(0, 1.25fr);
+    align-items: start;
+  }
+}

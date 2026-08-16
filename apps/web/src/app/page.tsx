@@ -1,54 +1,45 @@
 import { BrandSection } from "@/features/home/brand-section";
+import { CategorySection } from "@/features/home/category-section";
+import { DatabaseBanners } from "@/features/home/database-banners";
 import { getHomeContent } from "@/features/home/home-content";
 import { HeroSection } from "@/features/home/hero-section";
-import { getHomeMerchandisingContent } from "@/features/home/merchandising-content";
-import { TrustSection } from "@/features/home/trust-section";
+import { ProductRail } from "@/features/home/product-rail";
 import {
-  ManagedBanners,
-  ManagedCategories,
-  ManagedProductRail,
-  ManagedSection,
-} from "@/features/admin/managed-storefront";
+  getRealHomeCategories,
+  getRealHomeRails,
+} from "@/features/home/real-home-data";
+import { TrustSection } from "@/features/home/trust-section";
+import { getStorefrontCms, sectionVisible } from "@/lib/storefront/cms";
+
+export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [content, merchandising] = await Promise.all([
+  const [content, categories, rails, cms] = await Promise.all([
     getHomeContent(),
-    getHomeMerchandisingContent(),
+    getRealHomeCategories(),
+    getRealHomeRails(),
+    getStorefrontCms(),
   ]);
 
   return (
     <main>
-      <ManagedSection section="hero">
-        <HeroSection content={content.hero} />
-      </ManagedSection>
-      <ManagedBanners />
-      <ManagedCategories categories={content.categories} />
-      <ManagedProductRail
-        section={merchandising.specialOffers}
-        sectionKey="specialOffers"
-        tone="accent"
-      />
-      {merchandising.productSections.map((section) => {
-        const managedSection =
-          section.id === "digital-picks" ? "digitalPicks" : "homePicks";
+      {sectionVisible(cms, "hero") ? <HeroSection content={content.hero} /> : null}
+      {sectionVisible(cms, "banners") ? <DatabaseBanners banners={cms.banners} /> : null}
+      {sectionVisible(cms, "categories") ? <CategorySection categories={categories} /> : null}
+      {rails.map((section, index) => {
+        const isAmazing = section.id === "database-amazing";
+        const key = isAmazing ? "specialOffers" : "products";
+        if (!sectionVisible(cms, key)) return null;
         return (
-          <ManagedProductRail
+          <ProductRail
             key={section.id}
             section={section}
-            sectionKey={managedSection}
+            tone={index === 0 && isAmazing ? "accent" : "default"}
           />
         );
       })}
-      <ManagedProductRail
-        section={merchandising.trending}
-        sectionKey="trending"
-      />
-      <ManagedSection section="brands">
-        <BrandSection content={content.brands} />
-      </ManagedSection>
-      <ManagedSection section="trust">
-        <TrustSection services={content.trustServices} />
-      </ManagedSection>
+      {sectionVisible(cms, "brands") ? <BrandSection content={content.brands} /> : null}
+      {sectionVisible(cms, "trust") ? <TrustSection services={content.trustServices} /> : null}
     </main>
   );
 }

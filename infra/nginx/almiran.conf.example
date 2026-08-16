@@ -1,0 +1,50 @@
+# Example only. TLS certificate issuance/renewal belongs to the hosting layer.
+# The storefront is public; the marketplace API stays internal because the
+# Next.js BFF talks to it over the private network. Zarinpal callback is served
+# by almiran.ir/api/payments/zarinpal/callback and does not require public API access.
+
+server {
+    listen 80;
+    server_name almiran.ir www.almiran.ir;
+    return 301 https://almiran.ir$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name almiran.ir;
+
+    ssl_certificate     /etc/letsencrypt/live/almiran.ir/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/almiran.ir/privkey.pem;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+
+    client_max_body_size 2m;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 60s;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name www.almiran.ir;
+
+    ssl_certificate     /etc/letsencrypt/live/almiran.ir/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/almiran.ir/privkey.pem;
+    return 301 https://almiran.ir$request_uri;
+}
+
+# api.almiran.ir is intentionally not published by this baseline. Keep the API
+# on the private Docker network unless a future webhook/integration explicitly
+# requires a public route. This reduces the public attack surface.
