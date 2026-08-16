@@ -1,3 +1,24 @@
+x-core-env: &core-env
+  NODE_ENV: production
+  DATABASE_URL: postgresql://${POSTGRES_USER:-miran}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-miran}
+  DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
+  MIRAN_PUBLIC_URL: ${MIRAN_PUBLIC_URL:-https://almiran.ir}
+  ZARINPAL_MERCHANT_ID: ${ZARINPAL_MERCHANT_ID:-}
+  ZARINPAL_SANDBOX: ${ZARINPAL_SANDBOX:-true}
+  MIRAN_OBJECT_STORAGE_ENDPOINT: ${MIRAN_OBJECT_STORAGE_ENDPOINT:-}
+  MIRAN_OBJECT_STORAGE_BUCKET: ${MIRAN_OBJECT_STORAGE_BUCKET:-}
+  MIRAN_OBJECT_STORAGE_REGION: ${MIRAN_OBJECT_STORAGE_REGION:-auto}
+  MIRAN_OBJECT_STORAGE_ACCESS_KEY_ID: ${MIRAN_OBJECT_STORAGE_ACCESS_KEY_ID:-}
+  MIRAN_OBJECT_STORAGE_SECRET_ACCESS_KEY: ${MIRAN_OBJECT_STORAGE_SECRET_ACCESS_KEY:-}
+  MIRAN_OBJECT_STORAGE_FORCE_PATH_STYLE: ${MIRAN_OBJECT_STORAGE_FORCE_PATH_STYLE:-false}
+  MIRAN_PUBLIC_MEDIA_ENDPOINT: ${MIRAN_PUBLIC_MEDIA_ENDPOINT:-}
+  MIRAN_PUBLIC_MEDIA_BUCKET: ${MIRAN_PUBLIC_MEDIA_BUCKET:-}
+  MIRAN_PUBLIC_MEDIA_REGION: ${MIRAN_PUBLIC_MEDIA_REGION:-auto}
+  MIRAN_PUBLIC_MEDIA_ACCESS_KEY_ID: ${MIRAN_PUBLIC_MEDIA_ACCESS_KEY_ID:-}
+  MIRAN_PUBLIC_MEDIA_SECRET_ACCESS_KEY: ${MIRAN_PUBLIC_MEDIA_SECRET_ACCESS_KEY:-}
+  MIRAN_PUBLIC_MEDIA_FORCE_PATH_STYLE: ${MIRAN_PUBLIC_MEDIA_FORCE_PATH_STYLE:-false}
+  MIRAN_PUBLIC_MEDIA_BASE_URL: ${MIRAN_PUBLIC_MEDIA_BASE_URL:-https://media.almiran.ir}
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -15,35 +36,36 @@ services:
       retries: 12
     networks: [miran_internal]
 
-  marketplace-core:
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    volumes:
+      - miran_redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [miran_internal]
+
+  auth-service:
     build:
       context: ..
-      dockerfile: services/marketplace-core/Dockerfile
+      dockerfile: services/service-runtime/Dockerfile
+      args:
+        START_FILE: services/auth-service/src/start.js
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
-    environment: &core-env
-      NODE_ENV: production
-      DATABASE_URL: postgresql://${POSTGRES_USER:-miran}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-miran}
-      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
-      MIRAN_PUBLIC_URL: ${MIRAN_PUBLIC_URL:-https://almiran.ir}
-      ZARINPAL_MERCHANT_ID: ${ZARINPAL_MERCHANT_ID:-}
-      ZARINPAL_SANDBOX: ${ZARINPAL_SANDBOX:-true}
-      MIRAN_OBJECT_STORAGE_ENDPOINT: ${MIRAN_OBJECT_STORAGE_ENDPOINT:-}
-      MIRAN_OBJECT_STORAGE_BUCKET: ${MIRAN_OBJECT_STORAGE_BUCKET:-}
-      MIRAN_OBJECT_STORAGE_REGION: ${MIRAN_OBJECT_STORAGE_REGION:-auto}
-      MIRAN_OBJECT_STORAGE_ACCESS_KEY_ID: ${MIRAN_OBJECT_STORAGE_ACCESS_KEY_ID:-}
-      MIRAN_OBJECT_STORAGE_SECRET_ACCESS_KEY: ${MIRAN_OBJECT_STORAGE_SECRET_ACCESS_KEY:-}
-      MIRAN_OBJECT_STORAGE_FORCE_PATH_STYLE: ${MIRAN_OBJECT_STORAGE_FORCE_PATH_STYLE:-false}
-      MIRAN_PUBLIC_MEDIA_ENDPOINT: ${MIRAN_PUBLIC_MEDIA_ENDPOINT:-}
-      MIRAN_PUBLIC_MEDIA_BUCKET: ${MIRAN_PUBLIC_MEDIA_BUCKET:-}
-      MIRAN_PUBLIC_MEDIA_REGION: ${MIRAN_PUBLIC_MEDIA_REGION:-auto}
-      MIRAN_PUBLIC_MEDIA_ACCESS_KEY_ID: ${MIRAN_PUBLIC_MEDIA_ACCESS_KEY_ID:-}
-      MIRAN_PUBLIC_MEDIA_SECRET_ACCESS_KEY: ${MIRAN_PUBLIC_MEDIA_SECRET_ACCESS_KEY:-}
-      MIRAN_PUBLIC_MEDIA_FORCE_PATH_STYLE: ${MIRAN_PUBLIC_MEDIA_FORCE_PATH_STYLE:-false}
-      MIRAN_PUBLIC_MEDIA_BASE_URL: ${MIRAN_PUBLIC_MEDIA_BASE_URL:-https://media.almiran.ir}
-    command: ["node", "services/marketplace-core/src/start.js"]
+    environment:
+      <<: *core-env
+      DATABASE_APPLICATION_NAME: miran-auth-service
+      PORT: 3001
+      SCOPED_CORE_PORT: 3901
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 10s
@@ -51,18 +73,80 @@ services:
       retries: 12
     networks: [miran_internal]
 
-  marketplace-maintenance:
+  catalog-service:
     build:
       context: ..
-      dockerfile: services/marketplace-core/Dockerfile
+      dockerfile: services/service-runtime/Dockerfile
+      args:
+        START_FILE: services/catalog-service/src/start.js
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
     environment:
       <<: *core-env
+      DATABASE_APPLICATION_NAME: miran-catalog-service
+      PORT: 3001
+      SCOPED_CORE_PORT: 3901
       MIRAN_MAINTENANCE_INTERVAL_MS: ${MIRAN_MAINTENANCE_INTERVAL_MS:-60000}
-    command: ["node", "services/marketplace-core/postgres/maintenance.js"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [miran_internal]
+
+  admin-service:
+    build:
+      context: ..
+      dockerfile: services/service-runtime/Dockerfile
+      args:
+        START_FILE: services/admin-service/src/start.js
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *core-env
+      DATABASE_APPLICATION_NAME: miran-admin-service
+      PORT: 3001
+      SCOPED_CORE_PORT: 3901
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [miran_internal]
+
+  api-gateway:
+    build:
+      context: ..
+      dockerfile: services/api-gateway/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      catalog-service:
+        condition: service_healthy
+      admin-service:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      AUTH_SERVICE_URL: http://auth-service:3001
+      CATALOG_SERVICE_URL: http://catalog-service:3001
+      ADMIN_SERVICE_URL: http://admin-service:3001
+      REDIS_URL: redis://redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      GATEWAY_AUTH_RATE_LIMIT_PER_MINUTE: ${GATEWAY_AUTH_RATE_LIMIT_PER_MINUTE:-30}
+      GATEWAY_UPSTREAM_TIMEOUT_MS: ${GATEWAY_UPSTREAM_TIMEOUT_MS:-30000}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 6s
+      retries: 12
     networks: [miran_internal]
 
   web:
@@ -71,17 +155,45 @@ services:
       dockerfile: apps/web/Dockerfile
     restart: unless-stopped
     depends_on:
-      marketplace-core:
+      api-gateway:
         condition: service_healthy
     environment:
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: 0.0.0.0
-      API_BASE_URL: http://marketplace-core:3001
+      API_BASE_URL: http://api-gateway:3001
       SITE_INDEXABLE: ${SITE_INDEXABLE:-false}
       NEXT_PUBLIC_SITE_URL: ${MIRAN_PUBLIC_URL:-https://almiran.ir}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>{if(r.status>=500)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [miran_internal]
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      MIRAN_SITE_ADDRESS: ${MIRAN_SITE_ADDRESS:-almiran.ir}
+      MIRAN_WWW_SITE_ADDRESS: ${MIRAN_WWW_SITE_ADDRESS:-www.almiran.ir}
+      MIRAN_CANONICAL_URL: ${MIRAN_CANONICAL_URL:-https://almiran.ir}
     ports:
-      - "127.0.0.1:${WEB_PORT:-3000}:3000"
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - miran_caddy_data:/data
+      - miran_caddy_config:/config
+    healthcheck:
+      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
     networks: [miran_internal]
 
 networks:
@@ -90,3 +202,6 @@ networks:
 
 volumes:
   miran_postgres_data:
+  miran_redis_data:
+  miran_caddy_data:
+  miran_caddy_config:
