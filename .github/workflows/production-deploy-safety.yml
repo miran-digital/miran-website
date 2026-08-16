@@ -125,6 +125,8 @@ jobs:
           status=$?
           set -e
 
+          cat "$RUNNER_TEMP/deploy-closed.out"
+          cat "$RUNNER_TEMP/deploy-closed.err" >&2
           test "$status" -ne 0
           grep -F 'initial empty-host deployment requires MIRAN_ALLOW_INITIAL_EMPTY_HOST=true' "$RUNNER_TEMP/deploy-closed.err" >/dev/null
           test "$(git rev-parse HEAD)" = "$head_before"
