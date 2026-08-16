@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import test from "node:test";
 import { migratePostgres, openPostgresPool } from "../postgres/database.js";
 import { PostgresMarketplaceService } from "../postgres/marketplace-service.js";
@@ -7,14 +8,15 @@ import { PostgresPaymentService } from "../postgres/payment-service.js";
 const databaseUrl = process.env.POSTGRES_TEST_DATABASE_URL;
 
 class FakeZarinpal {
-  constructor() {
+  constructor(namespace) {
+    this.namespace = namespace;
     this.created = 0;
     this.verified = 0;
   }
 
   async createPayment({ amountIrr }) {
     this.created += 1;
-    const authority = `authority-${this.created}-${amountIrr}`;
+    const authority = `authority-${this.namespace}-${this.created}-${amountIrr}`;
     return {
       authority,
       redirectUrl: this.redirectUrl(authority),
@@ -45,9 +47,9 @@ async function fixture() {
   });
   await migratePostgres(pool);
   const marketplace = new PostgresMarketplaceService(pool, { reservationMinutes: 15 });
-  const provider = new FakeZarinpal();
+  const suffix = randomUUID().replaceAll("-", "");
+  const provider = new FakeZarinpal(suffix);
   const payments = new PostgresPaymentService(pool, provider, { reservationMinutes: 30 });
-  const suffix = Date.now().toString(36);
   const user = await marketplace.register({
     email: `pay-${suffix}@example.com`,
     password: "very-secure-pass-123",
