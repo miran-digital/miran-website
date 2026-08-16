@@ -92,7 +92,7 @@ test(
       });
       assert.equal(logout.status, 204);
       const expired = await fetch(`${origin}/v1/me`, { headers: authorization });
-      assert.equal(expired.status, 400);
+      assert.equal(expired.status, 401);
       const expiredBody = await json(expired);
       assert.equal(expiredBody.error, "UNAUTHORIZED");
     } finally {
