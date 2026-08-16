@@ -16,6 +16,7 @@ test("migrations are ordered, recorded and idempotent", () => {
     "005_private_storage.sql",
     "006_legacy_preview_import.sql",
     "007_product_media_storage.sql",
+    "008_cart_logistics.sql",
   ]);
 
   const productColumns = db.prepare("PRAGMA table_info(products)").all().map((row) => row.name);
@@ -52,6 +53,16 @@ test("migrations are ordered, recorded and idempotent", () => {
   assert.ok(mediaColumns.includes("mime_type"));
   assert.ok(mediaColumns.includes("size_bytes"));
   assert.ok(mediaColumns.includes("sha256"));
+
+  const orderColumns = db.prepare("PRAGMA table_info(orders)").all().map((row) => row.name);
+  assert.ok(orderColumns.includes("shipping_method_code"));
+  assert.ok(orderColumns.includes("shipping_method_name"));
+  assert.ok(orderColumns.includes("shipping_irr"));
+
+  const cartTables = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('carts','cart_items','shipping_methods') ORDER BY name",
+  ).all();
+  assert.deepEqual(cartTables.map((row) => row.name), ["cart_items", "carts", "shipping_methods"]);
 
   db.close();
 });

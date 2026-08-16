@@ -1,7 +1,10 @@
 import { createServer } from "node:http";
+import { PostgresCartService } from "./cart-service.js";
 import { PostgresCatalogManagementService } from "./catalog-management-service.js";
+import { PostgresCheckoutService } from "./checkout-service.js";
 import { migratePostgres, openPostgresPool } from "./database.js";
 import { PostgresLegacyPreviewImportService } from "./legacy-preview-import-service.js";
+import { PostgresLogisticsService } from "./logistics-service.js";
 import { PostgresMarketplaceService } from "./marketplace-service.js";
 import { PostgresOrderQueryService } from "./order-query-service.js";
 import { PostgresPaymentService } from "./payment-service.js";
@@ -78,6 +81,11 @@ export async function startPostgresServer({
   }
 
   const marketplace = new PostgresMarketplaceService(pool);
+  const cart = new PostgresCartService(pool);
+  const logistics = new PostgresLogisticsService(pool);
+  const checkout = new PostgresCheckoutService(pool, marketplace, cart, {
+    reservationMinutes: 30,
+  });
   const catalog = new PostgresCatalogManagementService(pool);
   const sellers = new PostgresSellerService(pool);
   const cms = new PostgresStorefrontCmsService(pool);
@@ -174,6 +182,37 @@ export async function startPostgresServer({
       const addressDeleteMatch = url.pathname.match(/^\/v1\/addresses\/([^/]+)$/);
       if (req.method === "DELETE" && addressDeleteMatch) {
         return sendJson(res, 200, await marketplace.removeAddress(user.id, decodeURIComponent(addressDeleteMatch[1])));
+      }
+
+      if (url.pathname === "/v1/cart") {
+        if (req.method === "GET") return sendJson(res, 200, await cart.get(user.id));
+        if (req.method === "DELETE") return sendJson(res, 200, await cart.clear(user.id));
+      }
+      if (req.method === "POST" && url.pathname === "/v1/cart/merge") {
+        const body = await readJson(req);
+        return sendJson(res, 200, await cart.merge(user.id, body.items || []));
+      }
+      const cartItemMatch = url.pathname.match(/^\/v1\/cart\/items\/([^/]+)$/);
+      if (cartItemMatch && req.method === "PUT") {
+        const body = await readJson(req);
+        return sendJson(
+          res,
+          200,
+          await cart.setLine(user.id, decodeURIComponent(cartItemMatch[1]), body.quantity),
+        );
+      }
+      if (cartItemMatch && req.method === "DELETE") {
+        return sendJson(res, 200, await cart.removeLine(user.id, decodeURIComponent(cartItemMatch[1])));
+      }
+
+      if (req.method === "GET" && url.pathname === "/v1/shipping/methods") {
+        return sendJson(
+          res,
+          200,
+          await logistics.listAvailable(user.id, url.searchParams.get("addressId"), {
+            merchandiseTotalIrr: url.searchParams.get("merchandiseTotalIrr"),
+          }),
+        );
       }
 
       if (req.method === "POST" && url.pathname === "/v1/sellers") {
@@ -274,6 +313,22 @@ export async function startPostgresServer({
         return sendJson(res, 200, await catalog.removeCategory(user.id, decodeURIComponent(categoryMatch[1])));
       }
 
+      if (url.pathname === "/v1/admin/shipping-methods") {
+        if (req.method === "GET") return sendJson(res, 200, await logistics.listManaged(user.id));
+        if (req.method === "POST") return sendJson(res, 201, await logistics.create(user.id, await readJson(req)));
+      }
+      const shippingMethodMatch = url.pathname.match(/^\/v1\/admin\/shipping-methods\/([^/]+)$/);
+      if (shippingMethodMatch && req.method === "PATCH") {
+        return sendJson(
+          res,
+          200,
+          await logistics.update(user.id, decodeURIComponent(shippingMethodMatch[1]), await readJson(req)),
+        );
+      }
+      if (shippingMethodMatch && req.method === "DELETE") {
+        return sendJson(res, 200, await logistics.remove(user.id, decodeURIComponent(shippingMethodMatch[1])));
+      }
+
       if (req.method === "GET" && url.pathname === "/v1/admin/orders") {
         return sendJson(
           res,
@@ -360,6 +415,9 @@ export async function startPostgresServer({
       }
       if (req.method === "POST" && url.pathname === "/v1/orders") {
         return sendJson(res, 201, await marketplace.createOrder(user.id, await readJson(req)));
+      }
+      if (req.method === "POST" && url.pathname === "/v1/checkout/orders") {
+        return sendJson(res, 201, await checkout.createOrderFromCart(user.id, await readJson(req)));
       }
 
       if (req.method === "POST" && url.pathname === "/v1/payments/zarinpal/start") {

@@ -40,7 +40,10 @@ function mapSummary(row) {
     status: row.status,
     subtotalIrr: money(row.subtotal_irr),
     discountIrr: money(row.discount_irr),
+    shippingIrr: money(row.shipping_irr ?? 0),
     totalIrr: money(row.total_irr),
+    shippingMethodCode: row.shipping_method_code ?? null,
+    shippingMethodName: row.shipping_method_name ?? null,
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
   };
@@ -55,6 +58,33 @@ function mapItem(row) {
     unitFinalPriceIrr: money(row.unit_final_price_irr),
     quantity: Number(row.quantity),
     lineTotalIrr: money(row.line_total_irr),
+  };
+}
+
+function mapAddress(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    label: row.label,
+    fullName: row.full_name,
+    phone: row.phone,
+    province: row.province,
+    city: row.city,
+    addressLine: row.address_line,
+    postalCode: row.postal_code,
+  };
+}
+
+function mapPayment(row) {
+  return {
+    id: row.id,
+    provider: row.provider,
+    amountIrr: money(row.amount_irr),
+    status: row.status,
+    authority: row.authority ?? null,
+    referenceId: row.reference_id ?? null,
+    createdAt: iso(row.created_at),
+    updatedAt: iso(row.updated_at),
   };
 }
 
@@ -84,6 +114,41 @@ export class PostgresOrderQueryService {
     return result.rows.map(mapItem);
   }
 
+  async addressForOrder(addressId) {
+    const result = await this.pool.query(
+      `SELECT id,label,full_name,phone,province,city,address_line,postal_code
+       FROM addresses
+       WHERE id=$1`,
+      [addressId],
+    );
+    return mapAddress(result.rows[0]);
+  }
+
+  async paymentsForOrder(orderId) {
+    const result = await this.pool.query(
+      `SELECT id,provider,amount_irr,status,authority,reference_id,created_at,updated_at
+       FROM payments
+       WHERE order_id=$1
+       ORDER BY created_at ASC,id ASC`,
+      [orderId],
+    );
+    return result.rows.map(mapPayment);
+  }
+
+  async details(row) {
+    const [items, address, payments] = await Promise.all([
+      this.itemsForOrder(row.id),
+      this.addressForOrder(row.address_id),
+      this.paymentsForOrder(row.id),
+    ]);
+    return {
+      ...mapSummary(row),
+      items,
+      address,
+      payments,
+    };
+  }
+
   async listMine(userId, options = {}) {
     const limit = safeLimit(options.limit, 50, 100);
     const offset = safeOffset(options.offset);
@@ -109,7 +174,7 @@ export class PostgresOrderQueryService {
     );
     const row = result.rows[0];
     assert(row, "Order not found", "NOT_FOUND");
-    return { ...mapSummary(row), items: await this.itemsForOrder(row.id) };
+    return this.details(row);
   }
 
   async listManaged(adminId, options = {}) {

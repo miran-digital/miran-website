@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Container } from "@miran/ui";
 import {
-  createEmptyGuestCart,
-  getGuestCart,
-  subscribeToGuestCart,
-  type GuestCart,
-} from "@/features/cart/guest-cart";
+  subscribeToServerCart,
+  syncGuestCartToServer,
+  type ServerCart,
+} from "@/features/cart/persistent-cart";
 import styles from "./checkout.module.css";
 
 type CheckoutStep = "address" | "delivery" | "review";
@@ -30,33 +29,28 @@ type Address = {
   is_default: number;
 };
 
-type ServerProduct = {
+type ShippingMethod = {
   id: string;
-  slug: string;
-  title: string;
-  pricing: {
-    baseIrr: number;
-    finalIrr: number;
-    discountIrr: number;
-  };
-  currency: "IRR";
-  inStock: boolean;
-  availableQuantity: number;
-};
-
-type ResolvedLine = {
-  productId: string;
-  quantity: number;
-  product: ServerProduct | null;
-  error: string | null;
+  code: string;
+  name: string;
+  description: string;
+  priceIrr: number;
+  freeOverIrr: number | null;
+  appliedPriceIrr: number;
+  minDeliveryDays: number | null;
+  maxDeliveryDays: number | null;
+  active: boolean;
 };
 
 type CreatedOrder = {
   id: string;
   status: "PENDING_PAYMENT" | "PAID" | "CANCELLED" | "PAYMENT_FAILED";
-  subtotal_irr: number;
-  discount_irr: number;
-  total_irr: number;
+  subtotalIrr: number;
+  discountIrr: number;
+  shippingIrr: number;
+  totalIrr: number;
+  shippingMethodCode: string | null;
+  shippingMethodName: string | null;
 };
 
 type PaymentStart = {
@@ -77,34 +71,39 @@ function createIdempotencyKey() {
     : `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function deliveryLabel(method: ShippingMethod) {
+  if (method.minDeliveryDays === null && method.maxDeliveryDays === null) return "زمان تحویل توسط مدیر فروشگاه تعیین نشده است.";
+  if (method.minDeliveryDays === method.maxDeliveryDays && method.minDeliveryDays !== null) {
+    return `${method.minDeliveryDays.toLocaleString("fa-IR")} روز کاری`;
+  }
+  if (method.minDeliveryDays !== null && method.maxDeliveryDays !== null) {
+    return `${method.minDeliveryDays.toLocaleString("fa-IR")} تا ${method.maxDeliveryDays.toLocaleString("fa-IR")} روز کاری`;
+  }
+  return method.description || "ارسال قابل رهگیری";
+}
+
 export function CheckoutPage() {
-  const [cart, setCart] = useState<GuestCart>(createEmptyGuestCart);
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState<CheckoutStep>("address");
-  const [delivery, setDelivery] = useState("standard");
   const [user, setUser] = useState<CurrentUser | null>(null);
+  const [cart, setCart] = useState<ServerCart | null>(null);
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState("");
-  const [resolvedLines, setResolvedLines] = useState<ResolvedLine[]>([]);
+  const [shippingMethods, setShippingMethods] = useState<ShippingMethod[]>([]);
+  const [selectedShippingCode, setSelectedShippingCode] = useState("");
+  const [shippingLoading, setShippingLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [order, setOrder] = useState<CreatedOrder | null>(null);
   const idempotencyKey = useRef(createIdempotencyKey());
 
   useEffect(() => {
-    const sync = () => {
-      setCart(getGuestCart());
-      setReady(true);
-    };
-    sync();
-    return subscribeToGuestCart(sync);
-  }, []);
-
-  useEffect(() => {
-    if (!ready) return;
     let active = true;
+    const unsubscribe = subscribeToServerCart((next) => {
+      if (active && next) setCart(next);
+    });
 
-    async function loadServerState() {
+    async function load() {
       setLoading(true);
       setMessage("");
       try {
@@ -113,108 +112,93 @@ export function CheckoutPage() {
         const currentUser = meResponse.ok ? meData.user ?? null : null;
         if (!active) return;
         setUser(currentUser);
+        if (!currentUser) return;
 
-        if (currentUser) {
-          const addressResponse = await fetch("/api/addresses", { cache: "no-store" });
-          if (addressResponse.ok) {
-            const addressData = (await addressResponse.json()) as { addresses: Address[] };
-            if (active) {
-              setAddresses(addressData.addresses);
-              const preferred =
-                addressData.addresses.find((address) => Boolean(address.is_default)) ??
-                addressData.addresses[0];
-              setSelectedAddressId((current) => current || preferred?.id || "");
-            }
-          }
-        } else if (active) {
-          setAddresses([]);
-          setSelectedAddressId("");
+        const [syncedCart, addressResponse] = await Promise.all([
+          syncGuestCartToServer(),
+          fetch("/api/addresses", { cache: "no-store" }),
+        ]);
+        if (!active) return;
+        if (syncedCart) setCart(syncedCart);
+        if (addressResponse.ok) {
+          const data = (await addressResponse.json()) as { addresses: Address[] };
+          setAddresses(data.addresses);
+          const preferred = data.addresses.find((address) => Boolean(address.is_default)) ?? data.addresses[0];
+          setSelectedAddressId(preferred?.id || "");
         }
-
-        const lines = await Promise.all(
-          cart.lines.map(async (line): Promise<ResolvedLine> => {
-            try {
-              const response = await fetch(
-                `/api/catalog/products/${encodeURIComponent(line.productId)}`,
-                { cache: "no-store" },
-              );
-              if (!response.ok) {
-                return {
-                  productId: line.productId,
-                  quantity: line.quantity,
-                  product: null,
-                  error: "این کالا در Catalog واقعی پیدا نشد.",
-                };
-              }
-              const data = (await response.json()) as { product: ServerProduct };
-              if (!data.product.inStock || data.product.availableQuantity < line.quantity) {
-                return {
-                  productId: line.productId,
-                  quantity: line.quantity,
-                  product: data.product,
-                  error: "موجودی این کالا برای تعداد انتخاب‌شده کافی نیست.",
-                };
-              }
-              return {
-                productId: line.productId,
-                quantity: line.quantity,
-                product: data.product,
-                error: null,
-              };
-            } catch {
-              return {
-                productId: line.productId,
-                quantity: line.quantity,
-                product: null,
-                error: "بررسی این کالا با Backend انجام نشد.",
-              };
-            }
-          }),
-        );
-        if (active) setResolvedLines(lines);
       } catch {
-        if (active) setMessage("آماده‌سازی Checkout واقعی انجام نشد.");
+        if (active) setMessage("آماده‌سازی Checkout انجام نشد؛ سبد شما حذف نشده است.");
       } finally {
-        if (active) setLoading(false);
+        if (active) {
+          setLoading(false);
+          setReady(true);
+        }
       }
     }
 
-    void loadServerState();
+    void load();
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!user || !cart || !selectedAddressId) {
+      setShippingMethods([]);
+      setSelectedShippingCode("");
+      return;
+    }
+    let active = true;
+    async function loadShipping() {
+      setShippingLoading(true);
+      setMessage("");
+      try {
+        const query = new URLSearchParams({
+          addressId: selectedAddressId,
+          merchandiseTotalIrr: String(cart?.totalIrr ?? 0),
+        });
+        const response = await fetch(`/api/shipping/methods?${query.toString()}`, { cache: "no-store" });
+        const data = (await response.json()) as { methods?: ShippingMethod[]; message?: string };
+        if (!response.ok) throw new Error(data.message || "shipping failed");
+        if (!active) return;
+        const methods = data.methods ?? [];
+        setShippingMethods(methods);
+        setSelectedShippingCode((current) =>
+          methods.some((method) => method.code === current) ? current : methods[0]?.code || "",
+        );
+      } catch {
+        if (active) {
+          setShippingMethods([]);
+          setSelectedShippingCode("");
+          setMessage("روش ارسال فعالی برای این نشانی دریافت نشد.");
+        }
+      } finally {
+        if (active) setShippingLoading(false);
+      }
+    }
+    void loadShipping();
     return () => {
       active = false;
     };
-  }, [cart.lines, ready]);
-
-  const invalidLines = resolvedLines.filter((line) => line.error);
-  const validLines = resolvedLines.filter(
-    (line): line is ResolvedLine & { product: ServerProduct } =>
-      Boolean(line.product) && !line.error,
-  );
-
-  const totals = useMemo(() => {
-    return validLines.reduce(
-      (result, line) => {
-        result.baseIrr += line.product.pricing.baseIrr * line.quantity;
-        result.discountIrr += line.product.pricing.discountIrr * line.quantity;
-        result.finalIrr += line.product.pricing.finalIrr * line.quantity;
-        return result;
-      },
-      { baseIrr: 0, discountIrr: 0, finalIrr: 0 },
-    );
-  }, [validLines]);
+  }, [user, cart, selectedAddressId]);
 
   const selectedAddress = addresses.find((address) => address.id === selectedAddressId) ?? null;
+  const selectedShipping = shippingMethods.find((method) => method.code === selectedShippingCode) ?? null;
+  const invalidCart = Boolean(cart?.lines.some((line) => !line.available));
+  const estimatedTotalIrr = (cart?.totalIrr ?? 0) + (selectedShipping?.appliedPriceIrr ?? 0);
   const canCreateOrder =
     Boolean(user) &&
+    Boolean(cart?.lines.length) &&
+    !invalidCart &&
     Boolean(selectedAddress) &&
-    cart.lines.length > 0 &&
-    resolvedLines.length === cart.lines.length &&
-    invalidLines.length === 0 &&
+    Boolean(selectedShipping) &&
     !loading &&
+    !shippingLoading &&
     !order;
 
   async function createOrder() {
-    if (!canCreateOrder || !selectedAddress) return;
+    if (!canCreateOrder || !selectedAddress || !selectedShipping) return;
     setLoading(true);
     setMessage("");
     try {
@@ -223,25 +207,19 @@ export function CheckoutPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           addressId: selectedAddress.id,
+          shippingMethodCode: selectedShipping.code,
           idempotencyKey: idempotencyKey.current,
-          items: validLines.map((line) => ({
-            productId: line.productId,
-            quantity: line.quantity,
-          })),
         }),
       });
-      const data = (await response.json()) as {
-        order?: CreatedOrder;
-        message?: string;
-      };
+      const data = (await response.json()) as { order?: CreatedOrder; message?: string };
       if (!response.ok || !data.order) {
         setMessage(data.message ?? "ثبت سفارش انجام نشد.");
         return;
       }
       setOrder(data.order);
-      setMessage("سفارش ثبت و موجودی آن برای پرداخت رزرو شد.");
+      setMessage("سفارش واقعی ثبت شد و موجودی تا پایان مهلت پرداخت رزرو است.");
     } catch {
-      setMessage("ثبت سفارش انجام نشد.");
+      setMessage("ثبت سفارش انجام نشد؛ سبد شما حفظ شده است.");
     } finally {
       setLoading(false);
     }
@@ -257,15 +235,11 @@ export function CheckoutPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ orderId: order.id }),
       });
-      const data = (await response.json()) as {
-        payment?: PaymentStart;
-        message?: string;
-        error?: string;
-      };
+      const data = (await response.json()) as { payment?: PaymentStart; message?: string; error?: string };
       if (!response.ok || !data.payment?.redirectUrl) {
         setMessage(
           data.error === "PAYMENT_NOT_CONFIGURED"
-            ? "درگاه زرین‌پال آماده است اما Merchant ID واقعی هنوز در Environment سرور تنظیم نشده است."
+            ? "زرین‌پال در کد آماده است اما Merchant ID این محیط هنوز تنظیم نشده است."
             : data.message ?? "شروع پرداخت انجام نشد.",
         );
         return;
@@ -278,17 +252,29 @@ export function CheckoutPage() {
     }
   }
 
-  if (!ready) {
+  if (!ready || loading && !user) {
+    return (
+      <main className={styles.page}>
+        <Container size="wide"><div className={styles.state} role="status">در حال آماده‌سازی Checkout…</div></Container>
+      </main>
+    );
+  }
+
+  if (!user) {
     return (
       <main className={styles.page}>
         <Container size="wide">
-          <div className={styles.state} role="status">در حال آماده‌سازی Checkout…</div>
+          <div className={styles.state}>
+            <h1>برای ثبت سفارش وارد حساب شوید</h1>
+            <p>سبد مهمان شما حفظ می‌شود و پس از ورود فقط شناسه کالا و تعداد با Cart واقعی Server ادغام می‌شود.</p>
+            <a href="/account?returnTo=/checkout">ورود یا ثبت‌نام</a>
+          </div>
         </Container>
       </main>
     );
   }
 
-  if (cart.lines.length === 0) {
+  if (!cart || cart.lines.length === 0) {
     return (
       <main className={styles.page}>
         <Container size="wide">
@@ -312,160 +298,167 @@ export function CheckoutPage() {
         </nav>
 
         <header className={styles.header}>
-          <p>Checkout Server-authoritative</p>
+          <p>Checkout واقعی Miran</p>
           <h1>تکمیل سفارش</h1>
-          <p>
-            قیمت، تخفیف و موجودی دوباره از Backend دریافت می‌شوند و پرداخت زرین‌پال فقط مبلغ ذخیره‌شده روی Order را Verify می‌کند.
-          </p>
+          <p>قیمت کالا، تخفیف، موجودی و هزینه ارسال همگی هنگام ساخت Order داخل Backend دوباره محاسبه می‌شوند.</p>
         </header>
 
-        {!user ? (
-          <div className={styles.state}>
-            <h2>برای ثبت سفارش وارد حساب شوید</h2>
-            <p>سبد شما حذف نمی‌شود؛ پس از ورود می‌توانید Checkout را ادامه دهید.</p>
-            <a href="/account?returnTo=/checkout">ورود یا ثبت‌نام</a>
-          </div>
-        ) : null}
+        <ol className={styles.steps} aria-label="مراحل Checkout">
+          <li data-active={step === "address"}>۱. نشانی</li>
+          <li data-active={step === "delivery"}>۲. روش ارسال</li>
+          <li data-active={step === "review"}>۳. ثبت و پرداخت</li>
+        </ol>
 
-        {user ? (
-          <>
-            <ol className={styles.steps} aria-label="مراحل Checkout">
-              <li data-active={step === "address"}>۱. نشانی</li>
-              <li data-active={step === "delivery"}>۲. تحویل</li>
-              <li data-active={step === "review"}>۳. ثبت و پرداخت</li>
-            </ol>
-
-            <div className={styles.layout}>
-              <section className={styles.panel} aria-live="polite">
-                {step === "address" ? (
-                  <div className={styles.form}>
-                    <div className={styles.sectionHeading}>
-                      <h2>نشانی ذخیره‌شده</h2>
-                      <p>Order فقط با نشانی متعلق به همین حساب قابل ثبت است.</p>
-                    </div>
-                    {addresses.length === 0 ? (
-                      <div className={styles.state}>
-                        <p>هنوز نشانی واقعی در حساب شما ثبت نشده است.</p>
-                        <a href="/account">افزودن نشانی در حساب</a>
-                      </div>
-                    ) : (
-                      addresses.map((address) => (
-                        <label className={styles.option} key={address.id}>
-                          <input
-                            type="radio"
-                            name="address"
-                            value={address.id}
-                            checked={selectedAddressId === address.id}
-                            onChange={() => setSelectedAddressId(address.id)}
-                          />
-                          <span>
-                            <strong>{address.label}{address.is_default ? " — پیش‌فرض" : ""}</strong>
-                            <small>{address.full_name}، {address.province}، {address.city}، {address.address_line}، {address.postal_code}</small>
-                          </span>
-                        </label>
-                      ))
-                    )}
-                    <button type="button" disabled={!selectedAddressId || loading} onClick={() => setStep("delivery")}>
-                      ادامه به روش تحویل
-                    </button>
-                  </div>
-                ) : null}
-
-                {step === "delivery" ? (
-                  <div className={styles.form}>
-                    <div className={styles.sectionHeading}>
-                      <h2>روش تحویل</h2>
-                      <p>هزینه و SLA نهایی بعداً از Logistics Service خوانده می‌شود؛ مبلغ ساختگی به Order اضافه نمی‌کنیم.</p>
-                    </div>
-                    <label className={styles.option}>
-                      <input type="radio" name="delivery" value="standard" checked={delivery === "standard"} onChange={(event) => setDelivery(event.target.value)} />
-                      <span><strong>ارسال استاندارد</strong><small>قابل رهگیری؛ هزینه نهایی بعد از اتصال Logistics.</small></span>
-                    </label>
-                    <label className={styles.option}>
-                      <input type="radio" name="delivery" value="priority" checked={delivery === "priority"} onChange={(event) => setDelivery(event.target.value)} />
-                      <span><strong>ارسال سریع</strong><small>پس از اتصال Logistics و بررسی محدوده فعال می‌شود.</small></span>
-                    </label>
-                    <div className={styles.actions}>
-                      <button type="button" onClick={() => setStep("address")}>بازگشت</button>
-                      <button type="button" onClick={() => setStep("review")}>مرور نهایی</button>
-                    </div>
-                  </div>
-                ) : null}
-
-                {step === "review" ? (
-                  <div className={styles.review}>
-                    <div className={styles.sectionHeading}>
-                      <h2>مرور، رزرو موجودی و پرداخت</h2>
-                      <p>ابتدا Order واقعی ساخته می‌شود؛ سپس زرین‌پال برای همان Order و همان مبلغ Database شروع می‌شود.</p>
-                    </div>
-
-                    {selectedAddress ? (
-                      <section>
-                        <h3>تحویل به</h3>
-                        <p>{selectedAddress.full_name}</p>
-                        <p>{selectedAddress.province}، {selectedAddress.city}، {selectedAddress.address_line}</p>
-                        <p><bdi dir="ltr">{selectedAddress.postal_code}</bdi></p>
-                        <button type="button" onClick={() => setStep("address")}>تغییر نشانی</button>
-                      </section>
-                    ) : null}
-
-                    {invalidLines.length > 0 ? (
-                      <div className={styles.paymentBoundary} role="alert">
-                        <strong>سبد نیازمند اصلاح است</strong>
-                        {invalidLines.map((line) => (
-                          <p key={line.productId}>{line.product?.title ?? line.productId}: {line.error}</p>
-                        ))}
-                      </div>
-                    ) : null}
-
-                    {order ? (
-                      <div className={styles.paymentBoundary} role="status">
-                        <strong>Order واقعی ساخته شد</strong>
-                        <p>شماره سفارش: <bdi dir="ltr">{order.id}</bdi></p>
-                        <p>وضعیت: {order.status}</p>
-                        <p>مبلغ قابل پرداخت: {toman(order.total_irr)}</p>
-                        <p>موجودی برای این سفارش رزرو شده است؛ سبد تا تأیید پرداخت پاک نمی‌شود.</p>
-                        {order.status === "PENDING_PAYMENT" ? (
-                          <button type="button" disabled={loading} onClick={() => void startPayment()}>
-                            {loading ? "در حال اتصال به زرین‌پال…" : "پرداخت امن با زرین‌پال"}
-                          </button>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <button type="button" disabled={!canCreateOrder} onClick={() => void createOrder()}>
-                        {loading ? "در حال ثبت…" : "ثبت سفارش و رزرو موجودی"}
-                      </button>
-                    )}
-
-                    <div className={styles.paymentBoundary} role="note">
-                      <strong>پرداخت فقط پس از Verify موفق ثبت می‌شود</strong>
-                      <p>بازگشت از درگاه به‌تنهایی کافی نیست؛ Backend Authority و مبلغ Order را دوباره با زرین‌پال Verify می‌کند.</p>
-                    </div>
-                  </div>
-                ) : null}
-                {message ? <p role="status">{message}</p> : null}
-              </section>
-
-              <aside className={styles.summary} aria-labelledby="checkout-summary">
-                <h2 id="checkout-summary">خلاصه Server</h2>
-                <ul>
-                  {resolvedLines.map((line) => (
-                    <li key={line.productId}>
-                      <span>{line.product?.title ?? line.productId} × {line.quantity.toLocaleString("fa-IR")}</span>
-                      <strong>{line.product ? toman(line.product.pricing.finalIrr * line.quantity) : "نامعتبر"}</strong>
-                    </li>
-                  ))}
-                </ul>
-                <div className={styles.total}>
-                  <span>جمع کالاها</span>
-                  <strong>{toman(totals.finalIrr)}</strong>
+        <div className={styles.layout}>
+          <section className={styles.panel} aria-live="polite">
+            {step === "address" ? (
+              <div className={styles.form}>
+                <div className={styles.sectionHeading}>
+                  <h2>نشانی ذخیره‌شده</h2>
+                  <p>Backend مالکیت نشانی را هنگام Quote ارسال و ساخت Order دوباره بررسی می‌کند.</p>
                 </div>
-                {totals.discountIrr > 0 ? <p>سود شما از تخفیف: {toman(totals.discountIrr)}</p> : null}
-                <p>قیمت نهایی هنگام ساخت Order و Verify پرداخت از Database خوانده می‌شود.</p>
-              </aside>
-            </div>
-          </>
-        ) : null}
+                {addresses.length === 0 ? (
+                  <div className={styles.state}>
+                    <p>هنوز نشانی در حساب شما ثبت نشده است.</p>
+                    <a href="/account">افزودن نشانی</a>
+                  </div>
+                ) : (
+                  addresses.map((address) => (
+                    <label className={styles.option} key={address.id}>
+                      <input
+                        type="radio"
+                        name="address"
+                        checked={selectedAddressId === address.id}
+                        onChange={() => setSelectedAddressId(address.id)}
+                      />
+                      <span>
+                        <strong>{address.label}{address.is_default ? " — پیش‌فرض" : ""}</strong>
+                        <small>{address.full_name}، {address.province}، {address.city}، {address.address_line}، {address.postal_code}</small>
+                      </span>
+                    </label>
+                  ))
+                )}
+                <button type="button" disabled={!selectedAddressId || shippingLoading} onClick={() => setStep("delivery")}>
+                  ادامه به روش ارسال
+                </button>
+              </div>
+            ) : null}
+
+            {step === "delivery" ? (
+              <div className={styles.form}>
+                <div className={styles.sectionHeading}>
+                  <h2>روش ارسال واقعی</h2>
+                  <p>فقط روش‌هایی نمایش داده می‌شوند که مدیر در Database فعال کرده است؛ هیچ هزینه ساختگی اضافه نمی‌شود.</p>
+                </div>
+                {shippingLoading ? <p>در حال دریافت روش‌های ارسال…</p> : null}
+                {!shippingLoading && shippingMethods.length === 0 ? (
+                  <div className={styles.paymentBoundary} role="alert">
+                    <strong>روش ارسال فعال وجود ندارد</strong>
+                    <p>مدیر فروشگاه باید حداقل یک روش ارسال و مبلغ واقعی آن را در پنل مدیریت تعریف کند.</p>
+                  </div>
+                ) : null}
+                {shippingMethods.map((method) => (
+                  <label className={styles.option} key={method.id}>
+                    <input
+                      type="radio"
+                      name="shipping"
+                      value={method.code}
+                      checked={selectedShippingCode === method.code}
+                      onChange={() => setSelectedShippingCode(method.code)}
+                    />
+                    <span>
+                      <strong>{method.name} — {method.appliedPriceIrr === 0 ? "رایگان" : toman(method.appliedPriceIrr)}</strong>
+                      <small>{method.description || deliveryLabel(method)} · {deliveryLabel(method)}</small>
+                      {method.freeOverIrr !== null ? <small>ارسال رایگان از {toman(method.freeOverIrr)}</small> : null}
+                    </span>
+                  </label>
+                ))}
+                <div className={styles.actions}>
+                  <button type="button" onClick={() => setStep("address")}>بازگشت</button>
+                  <button type="button" disabled={!selectedShipping} onClick={() => setStep("review")}>مرور نهایی</button>
+                </div>
+              </div>
+            ) : null}
+
+            {step === "review" ? (
+              <div className={styles.review}>
+                <div className={styles.sectionHeading}>
+                  <h2>مرور نهایی و رزرو موجودی</h2>
+                  <p>عدد نهایی این صفحه فقط نمایش Quote است؛ مبلغ قطعی دوباره داخل Transaction ساخت Order محاسبه می‌شود.</p>
+                </div>
+
+                {selectedAddress ? (
+                  <section>
+                    <h3>تحویل به</h3>
+                    <p>{selectedAddress.full_name}</p>
+                    <p>{selectedAddress.province}، {selectedAddress.city}، {selectedAddress.address_line}</p>
+                    <button type="button" onClick={() => setStep("address")}>تغییر نشانی</button>
+                  </section>
+                ) : null}
+
+                {selectedShipping ? (
+                  <section>
+                    <h3>ارسال</h3>
+                    <p>{selectedShipping.name} — {selectedShipping.appliedPriceIrr === 0 ? "رایگان" : toman(selectedShipping.appliedPriceIrr)}</p>
+                    <p>{deliveryLabel(selectedShipping)}</p>
+                    <button type="button" onClick={() => setStep("delivery")}>تغییر روش ارسال</button>
+                  </section>
+                ) : null}
+
+                {invalidCart ? (
+                  <div className={styles.paymentBoundary} role="alert">
+                    <strong>سبد نیازمند اصلاح است</strong>
+                    <p>موجودی حداقل یکی از کالاها برای تعداد انتخاب‌شده کافی نیست.</p>
+                    <a href="/cart">بازگشت به سبد</a>
+                  </div>
+                ) : null}
+
+                {order ? (
+                  <div className={styles.paymentBoundary} role="status">
+                    <strong>Order واقعی ساخته شد</strong>
+                    <p>شماره سفارش: <bdi dir="ltr">{order.id}</bdi></p>
+                    <p>روش ارسال: {order.shippingMethodName ?? "—"}</p>
+                    <p>هزینه ارسال: {toman(order.shippingIrr)}</p>
+                    <p>مبلغ قابل پرداخت: {toman(order.totalIrr)}</p>
+                    {order.status === "PENDING_PAYMENT" ? (
+                      <button type="button" disabled={loading} onClick={() => void startPayment()}>
+                        {loading ? "در حال اتصال به زرین‌پال…" : "پرداخت امن با زرین‌پال"}
+                      </button>
+                    ) : null}
+                  </div>
+                ) : (
+                  <button type="button" disabled={!canCreateOrder} onClick={() => void createOrder()}>
+                    {loading ? "در حال ثبت…" : "ثبت سفارش و رزرو موجودی"}
+                  </button>
+                )}
+
+                <div className={styles.paymentBoundary} role="note">
+                  <strong>پرداخت فقط با Verify موفق نهایی می‌شود</strong>
+                  <p>بازگشت مرورگر از درگاه به‌تنهایی سفارش را Paid نمی‌کند؛ Backend Authority و مبلغ Order را با زرین‌پال Verify می‌کند.</p>
+                </div>
+              </div>
+            ) : null}
+
+            {message ? <p role="status">{message}</p> : null}
+          </section>
+
+          <aside className={styles.summary} aria-labelledby="checkout-summary">
+            <h2 id="checkout-summary">خلاصه Server</h2>
+            <ul>
+              {cart.lines.map((line) => (
+                <li key={line.productId}>
+                  <span>{line.title} × {line.quantity.toLocaleString("fa-IR")}</span>
+                  <strong>{toman(line.pricing.finalIrr * line.quantity)}</strong>
+                </li>
+              ))}
+            </ul>
+            <div className={styles.total}><span>کالاها</span><strong>{toman(cart.totalIrr)}</strong></div>
+            {cart.discountIrr > 0 ? <p>تخفیف کالاها: {toman(cart.discountIrr)}</p> : null}
+            <p>ارسال: {selectedShipping ? (selectedShipping.appliedPriceIrr === 0 ? "رایگان" : toman(selectedShipping.appliedPriceIrr)) : "انتخاب نشده"}</p>
+            <div className={styles.total}><span>جمع Quote</span><strong>{toman(estimatedTotalIrr)}</strong></div>
+            <p>مبلغ قطعی Order فقط از Database و داخل Backend ساخته می‌شود.</p>
+          </aside>
+        </div>
       </Container>
     </main>
   );

@@ -36,7 +36,7 @@ test(
       );
       assert.deepEqual(
         versions.rows.map((row) => row.version),
-        ["001_init.sql"],
+        ["001_init.sql", "008_cart_logistics.sql"],
       );
 
       const requiredTables = [
@@ -58,6 +58,9 @@ test(
         "home_sections",
         "header_messages",
         "storefront_banners",
+        "carts",
+        "cart_items",
+        "shipping_methods",
       ];
       const tables = await pool.query(
         `SELECT table_name
@@ -66,6 +69,16 @@ test(
       );
       const names = new Set(tables.rows.map((row) => row.table_name));
       for (const table of requiredTables) assert.ok(names.has(table), `${table} must exist`);
+
+      const orderColumns = await pool.query(
+        `SELECT column_name
+         FROM information_schema.columns
+         WHERE table_schema='public' AND table_name='orders'`,
+      );
+      const orderColumnNames = new Set(orderColumns.rows.map((row) => row.column_name));
+      assert.ok(orderColumnNames.has("shipping_method_code"));
+      assert.ok(orderColumnNames.has("shipping_method_name"));
+      assert.ok(orderColumnNames.has("shipping_irr"));
     } finally {
       await pool.end();
     }
