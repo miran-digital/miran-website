@@ -48,3 +48,15 @@ jobs:
           grep -F "public" infra/backup/create-full-live-backup.sh >/dev/null
           grep -F "pg_dump" infra/backup/create-full-live-backup.sh >/dev/null
           grep -F "SHA256SUMS" infra/backup/create-full-live-backup.sh >/dev/null
+
+      - name: Assert production migration sources are included
+        run: |
+          set -euo pipefail
+          test -f services/marketplace-core/migrations/008_cart_logistics.sql
+          test -f services/marketplace-core/postgres/migrations/008_cart_logistics.sql
+          grep -F "services/marketplace-core/migrations" infra/backup/create-full-live-backup.sh >/dev/null
+          grep -F "services/marketplace-core/postgres/migrations" infra/backup/create-full-live-backup.sh >/dev/null
+          if grep -F "services/marketplace-core/src/migrations" infra/backup/create-full-live-backup.sh; then
+            echo "Backup references a non-existent migration directory" >&2
+            exit 1
+          fi
