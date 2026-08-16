@@ -3,6 +3,7 @@ import type { HomeBrandSection } from './home-content';
 import styles from './home.module.css';
 
 export function BrandSection({ content }: { content: HomeBrandSection }) {
+  if (content.items.length === 0) return null;
   return (
     <section className={styles.brands} aria-labelledby="home-brands-title">
       <Container size="wide">
