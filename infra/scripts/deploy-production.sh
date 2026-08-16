@@ -5,6 +5,7 @@ TARGET_SHA="${1:?target commit SHA is required}"
 ENV_FILE="${MIRAN_ENV_FILE:-/etc/miran/production.env}"
 BACKUP_DIR="${MIRAN_BACKUP_DIR:-/var/backups/miran}"
 COMPOSE_FILE="infra/docker-compose.production.yml"
+EXPECTED_SERVICES="admin-service api-gateway auth-service caddy catalog-service postgres redis web"
 
 if [ ! -f "$ENV_FILE" ]; then
   echo "Production env file not found: $ENV_FILE" >&2
@@ -62,10 +63,17 @@ fi
 
 git checkout --detach "$TARGET_SHA"
 
-# Re-evaluate the target compose file after checkout.
 if [ ! -f "$COMPOSE_FILE" ]; then
   echo "Target commit does not contain the production compose file." >&2
   git checkout --detach "$current_sha" || true
+  exit 1
+fi
+
+actual_services="$(compose config --services | sort | tr '\n' ' ' | sed 's/ $//')"
+if [ "$actual_services" != "$EXPECTED_SERVICES" ]; then
+  echo "Production compose service set is invalid." >&2
+  echo "Expected: $EXPECTED_SERVICES" >&2
+  echo "Actual:   $actual_services" >&2
   exit 1
 fi
 
@@ -73,9 +81,14 @@ compose up -d --build --remove-orphans
 
 ready=0
 attempt=1
-while [ "$attempt" -le 60 ]; do
-  web_binding="$(compose port web 3000 2>/dev/null | head -n 1 || true)"
-  if [ -n "$web_binding" ] && curl -fsS --max-time 5 "http://${web_binding}/" >/dev/null 2>&1; then
+while [ "$attempt" -le 90 ]; do
+  if compose exec -T api-gateway node -e \
+    "fetch('http://127.0.0.1:3001/health').then(async r=>{if(!r.ok)process.exit(1);const j=await r.json();if(!j.ok||j.redis!=='ready')process.exit(1)}).catch(()=>process.exit(1))" \
+    >/dev/null 2>&1 \
+    && compose exec -T web node -e \
+    "fetch('http://127.0.0.1:3000/').then(r=>{if(r.status>=500)process.exit(1)}).catch(()=>process.exit(1))" \
+    >/dev/null 2>&1 \
+    && compose exec -T caddy caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1; then
     ready=1
     break
   fi
@@ -84,9 +97,10 @@ while [ "$attempt" -le 60 ]; do
 done
 
 if [ "$ready" -ne 1 ]; then
-  echo "Production smoke check failed. Current containers:" >&2
+  echo "Eight-service production smoke check failed. Current containers:" >&2
   compose ps >&2 || true
-  compose logs --no-color --tail=200 web marketplace-core >&2 || true
+  compose logs --no-color --tail=200 \
+    caddy web api-gateway auth-service catalog-service admin-service redis postgres >&2 || true
   echo "Application rollback can use previous commit: $current_sha" >&2
   if [ -s "$backup_file" ]; then
     echo "Pre-deploy DB backup: $backup_file" >&2
@@ -94,10 +108,21 @@ if [ "$ready" -ne 1 ]; then
   exit 1
 fi
 
-api_health="$(compose exec -T marketplace-core node -e "fetch('http://127.0.0.1:3001/health').then(async r=>{if(!r.ok)process.exit(1);process.stdout.write(await r.text())}).catch(()=>process.exit(1))")"
-printf '%s' "$api_health" | grep -q '"database":"postgresql"'
+running_count="$(compose ps --status running --services | wc -l | tr -d ' ')"
+if [ "$running_count" -ne 8 ]; then
+  echo "Expected 8 running production services, found $running_count" >&2
+  compose ps >&2
+  exit 1
+fi
+
+api_health="$(compose exec -T api-gateway node -e "fetch('http://127.0.0.1:3001/health').then(async r=>{if(!r.ok)process.exit(1);process.stdout.write(await r.text())}).catch(()=>process.exit(1))")"
+printf '%s' "$api_health" | grep -q '"service":"api-gateway"'
+printf '%s' "$api_health" | grep -q '"redis":"ready"'
+printf '%s' "$api_health" | grep -q '"auth":"auth-service"'
+printf '%s' "$api_health" | grep -q '"catalog":"catalog-service"'
+printf '%s' "$api_health" | grep -q '"admin":"admin-service"'
 
 printf '%s\n' "$TARGET_SHA" > .miran-deployed-sha
 chmod 600 .miran-deployed-sha
 
-echo "Miran deployment healthy at commit $TARGET_SHA"
+echo "Miran eight-service deployment healthy at commit $TARGET_SHA"
