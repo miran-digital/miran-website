@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { addGuestCartLine } from "@/features/cart/guest-cart";
+import { addCartLinePreferServer } from "@/features/cart/persistent-cart";
 import type { CatalogProductDetail } from "./catalog-gateway";
 import styles from "./product-detail.module.css";
 
@@ -12,20 +12,32 @@ type AddToCartPanelProps = {
 export function AddToCartPanel({ product }: AddToCartPanelProps) {
   const [quantity, setQuantity] = useState(1);
   const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  function addToCart() {
-    const itemCount = addGuestCartLine({
-      productId: product.id,
-      slug: product.slug,
-      title: product.title,
-      mediaLabel: product.mediaLabel,
-      unitPriceMinor: product.price.amountMinor,
-      currency: product.price.currency,
-      quantity,
-    });
-    setMessage(
-      `${quantity.toLocaleString("fa-IR")} عدد به سبد اضافه شد؛ اکنون ${itemCount.toLocaleString("fa-IR")} کالا در سبد مهمان دارید.`,
-    );
+  async function addToCart() {
+    if (saving || !product.inStock) return;
+    setSaving(true);
+    setMessage("");
+    try {
+      const result = await addCartLinePreferServer({
+        productId: product.id,
+        slug: product.slug,
+        title: product.title,
+        mediaLabel: product.mediaLabel,
+        unitPriceMinor: product.price.amountMinor,
+        currency: product.price.currency,
+        quantity,
+      });
+      setMessage(
+        result.mode === "server"
+          ? `${quantity.toLocaleString("fa-IR")} عدد به سبد حساب شما اضافه شد؛ اکنون ${result.itemCount.toLocaleString("fa-IR")} کالا دارید.`
+          : `${quantity.toLocaleString("fa-IR")} عدد به سبد مهمان اضافه شد؛ اکنون ${result.itemCount.toLocaleString("fa-IR")} کالا دارید.`,
+      );
+    } catch {
+      setMessage("افزودن کالا به سبد انجام نشد؛ دوباره تلاش کنید.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -34,7 +46,7 @@ export function AddToCartPanel({ product }: AddToCartPanelProps) {
         <span>تعداد</span>
         <select
           value={quantity}
-          disabled={!product.inStock}
+          disabled={!product.inStock || saving}
           onChange={(event) => setQuantity(Number(event.target.value))}
         >
           {Array.from({ length: 10 }, (_, index) => index + 1).map((value) => (
@@ -44,8 +56,12 @@ export function AddToCartPanel({ product }: AddToCartPanelProps) {
           ))}
         </select>
       </label>
-      <button type="button" disabled={!product.inStock} onClick={addToCart}>
-        {product.inStock ? "افزودن به سبد خرید" : "فعلاً ناموجود"}
+      <button
+        type="button"
+        disabled={!product.inStock || saving}
+        onClick={() => void addToCart()}
+      >
+        {!product.inStock ? "فعلاً ناموجود" : saving ? "در حال افزودن…" : "افزودن به سبد خرید"}
       </button>
       <p className={styles.cartStatus} role="status" aria-live="polite">
         {message}
