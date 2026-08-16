@@ -7,8 +7,13 @@ const authBase = new URL(process.env.AUTH_SERVICE_URL || "http://auth-service:30
 const catalogBase = new URL(process.env.CATALOG_SERVICE_URL || "http://catalog-service:3001");
 const adminBase = new URL(process.env.ADMIN_SERVICE_URL || "http://admin-service:3001");
 const redisUrl = new URL(process.env.REDIS_URL || "redis://redis:6379");
+const redisPassword = String(process.env.REDIS_PASSWORD || "");
 const requestTimeoutMs = Number(process.env.GATEWAY_UPSTREAM_TIMEOUT_MS || 30_000);
 const authRateLimit = Number(process.env.GATEWAY_AUTH_RATE_LIMIT_PER_MINUTE || 30);
+
+if (process.env.NODE_ENV === "production" && !redisPassword) {
+  throw new Error("REDIS_PASSWORD is required in production");
+}
 
 function sendJson(res, status, body) {
   const data = JSON.stringify(body);
@@ -31,20 +36,24 @@ function encodeRedisCommand(args) {
 }
 
 function parseRedisReply(buffer) {
-  const text = buffer.toString("utf8");
-  const type = text[0];
-  const lineEnd = text.indexOf("\r\n");
+  if (!buffer.length) return null;
+  const type = String.fromCharCode(buffer[0]);
+  const lineEnd = buffer.indexOf("\r\n");
   if (lineEnd < 0) return null;
-  const head = text.slice(1, lineEnd);
-  if (type === "+") return { value: head };
-  if (type === ":") return { value: Number(head) };
+  const head = buffer.subarray(1, lineEnd).toString("utf8");
+  if (type === "+") return { value: head, consumed: lineEnd + 2 };
+  if (type === ":") return { value: Number(head), consumed: lineEnd + 2 };
   if (type === "-") throw new Error(`Redis error: ${head}`);
-  if (type === "$" && Number(head) === -1) return { value: null };
+  if (type === "$" && Number(head) === -1) return { value: null, consumed: lineEnd + 2 };
   if (type === "$") {
     const size = Number(head);
     const start = lineEnd + 2;
-    if (buffer.length < start + size + 2) return null;
-    return { value: buffer.subarray(start, start + size).toString("utf8") };
+    const end = start + size + 2;
+    if (buffer.length < end) return null;
+    return {
+      value: buffer.subarray(start, start + size).toString("utf8"),
+      consumed: end,
+    };
   }
   throw new Error("Unsupported Redis response");
 }
@@ -52,27 +61,44 @@ function parseRedisReply(buffer) {
 function redisCommand(args) {
   return new Promise((resolve, reject) => {
     const socket = connect({ host: redisUrl.hostname, port: Number(redisUrl.port || 6379) });
+    const expectedReplies = redisPassword ? 2 : 1;
+    const replies = [];
     let buffer = Buffer.alloc(0);
-    const timer = setTimeout(() => socket.destroy(new Error("Redis timeout")), 2_000);
-    socket.once("connect", () => socket.write(encodeRedisCommand(args)));
+    let settled = false;
+    const finish = (error, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.destroy();
+      if (error) reject(error);
+      else resolve(value);
+    };
+    const timer = setTimeout(() => finish(new Error("Redis timeout")), 2_000);
+
+    socket.once("connect", () => {
+      const commands = [];
+      if (redisPassword) commands.push(encodeRedisCommand(["AUTH", redisPassword]));
+      commands.push(encodeRedisCommand(args));
+      socket.write(commands.join(""));
+    });
+
     socket.on("data", (chunk) => {
       buffer = Buffer.concat([buffer, chunk]);
       try {
-        const parsed = parseRedisReply(buffer);
-        if (!parsed) return;
-        clearTimeout(timer);
-        socket.end();
-        resolve(parsed.value);
+        while (buffer.length) {
+          const parsed = parseRedisReply(buffer);
+          if (!parsed) break;
+          replies.push(parsed.value);
+          buffer = buffer.subarray(parsed.consumed);
+          if (replies.length === expectedReplies) {
+            return finish(null, replies.at(-1));
+          }
+        }
       } catch (error) {
-        clearTimeout(timer);
-        socket.destroy();
-        reject(error);
+        finish(error);
       }
     });
-    socket.once("error", (error) => {
-      clearTimeout(timer);
-      reject(error);
-    });
+    socket.once("error", (error) => finish(error));
   });
 }
 
