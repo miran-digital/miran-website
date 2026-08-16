@@ -4,66 +4,91 @@ This runbook is intentionally fail-closed. Do not expose the production storefro
 
 ## 1. Required external resources
 
-- Linux host or managed container platform capable of running the web and marketplace-core containers.
-- PostgreSQL 17+ with persistent storage and automated backups.
+- Linux host or managed container platform capable of running the eight-service Docker Compose topology.
+- PostgreSQL 17+ persistent storage and automated backups.
+- Redis persistent storage; Redis remains private to the Docker network and requires authentication.
 - Private S3-compatible bucket for seller documents. Public read access must be disabled.
 - Public S3-compatible bucket/origin for product and banner media plus an HTTPS media base URL/CDN.
 - DNS control for `almiran.ir` and `www.almiran.ir`. Reserve `api.almiran.ir`; keep it private/unpublished unless a future integration explicitly needs it.
-- TLS certificate for `almiran.ir`/`www.almiran.ir`.
+- Ports 80/443 available to Caddy for automatic TLS.
 - Zarinpal Merchant ID only when staging checkout is proven end to end.
 
-## 2. Secret requirements
+## 2. Exact production runtime
+
+`infra/docker-compose.production.yml` must resolve to exactly these eight services:
+
+- `web`
+- `api-gateway`
+- `auth-service`
+- `catalog-service`
+- `admin-service`
+- `postgres`
+- `redis`
+- `caddy`
+
+`marketplace-core` remains a compatibility implementation library and is not a ninth production container.
+
+Expected request flow:
+
+`Internet -> Caddy -> Web BFF -> API Gateway -> Auth/Catalog/Admin -> PostgreSQL`
+
+The API Gateway also uses Redis for shared authentication rate limiting. Backend services, PostgreSQL and Redis must not publish host ports.
+
+## 3. Secret requirements
 
 Keep all secrets in the hosting secret store or an untracked root-owned environment file. Never commit them.
 
 Required for production runtime:
 
-- `POSTGRES_PASSWORD` / `DATABASE_URL`
+- `POSTGRES_PASSWORD`
+- `REDIS_PASSWORD`
 - private object-storage endpoint, bucket and credentials
 - public media endpoint, bucket and credentials
 - `MIRAN_PUBLIC_MEDIA_BASE_URL`
-- `MIRAN_BOOTSTRAP_ADMIN_EMAIL` and `MIRAN_BOOTSTRAP_ADMIN_PASSWORD` for the one-time initial bootstrap only
+- `MIRAN_BOOTSTRAP_ADMIN_EMAIL` and `MIRAN_BOOTSTRAP_ADMIN_PASSWORD` for one-time initial bootstrap only
 - `ZARINPAL_MERCHANT_ID` after sandbox verification
 
-Generate long random database/admin/storage secrets. Remove bootstrap-admin secrets after the first successful admin creation.
+Generate long random database, Redis, admin and storage secrets. Remove bootstrap-admin secrets after the first successful admin creation.
 
-## 3. Pre-deploy gates
+## 4. Pre-deploy gates
 
 1. PR CI is green.
 2. PostgreSQL integration tests are green.
-3. Production API Docker image builds and `/health` reports `database: postgresql`.
-4. Web Docker image builds.
-5. Backup/restore verification workflow is green.
-6. `main` is backed up/tagged before merge.
-7. Production database backup exists before every schema migration after launch.
-8. Search indexing remains disabled (`SITE_INDEXABLE=false`) until the storefront, legal pages, payment, fulfillment and support flow are approved.
+3. `Eight Service Stack` CI is green and proves exactly eight running services.
+4. Gateway `/health` reports Redis ready and identifies Auth, Catalog and Admin as separate upstreams.
+5. Web Docker image builds.
+6. Backup/restore verification workflow is green.
+7. `main` is backed up/tagged before release.
+8. Production database backup exists before every schema migration after launch.
+9. Search indexing remains disabled (`SITE_INDEXABLE=false`) until storefront, legal pages, payment, fulfillment and support flow are approved.
 
-## 4. Staging deployment
+## 5. Service boundaries
 
-Use `infra/docker-compose.full-stack.staging.yml` with a secret environment source derived from `infra/staging.env.example`.
+- `auth-service`: registration, login/logout, current user/session and addresses.
+- `catalog-service`: public catalog/storefront plus current commerce compatibility flows: cart, shipping quote, seller onboarding, checkout, orders, payments and maintenance.
+- `admin-service`: CMS, seller review, categories, products/media, inventory, shipping management and orders.
+- `api-gateway`: internal routing, downstream health aggregation and Redis-backed authentication rate limiting.
+- `web`: browser-facing Next.js BFF. The browser never receives raw backend routing details.
+- `caddy`: only public edge; TLS and canonical-domain handling.
 
-Expected private topology:
+The broad Phase 1 catalog compatibility boundary is intentional. Later cart/order/payment/seller/shipment services are extracted behind the gateway without rewriting frontend URLs.
 
-`Internet -> TLS reverse proxy -> web:3000 -> marketplace-core:3001 -> PostgreSQL`
-
-The browser should not receive the raw marketplace bearer token. Next.js remains the BFF and stores the backend session token in an HttpOnly cookie boundary.
-
-Do not publish the PostgreSQL port or marketplace-core port to the internet.
-
-## 5. Database migration
+## 6. Database migration
 
 Before migration:
 
 1. Create a PostgreSQL backup.
 2. Verify its SHA-256 checksum.
 3. Confirm sufficient disk space.
-4. Run the migration command from the same API image/version that will be deployed:
+4. Run the migration command from the same compatibility code version that the services use:
 
 `pnpm --filter @miran/marketplace-core migrate:postgres`
 
-The migration runner uses a PostgreSQL advisory lock and records applied versions in `schema_migrations`.
+The migration runner uses a PostgreSQL advisory lock and records applied versions in `schema_migrations`. Multiple extracted services may start concurrently; the advisory lock prevents concurrent migration races.
 
-## 6. Initial admin
+Do not reset or duplicate production data merely to simulate physical service separation. Data ownership is separated later through reviewed migrations.
+
+## 7. Initial admin
 
 Only when no ADMIN exists, run the one-time bootstrap command with secrets injected by the hosting platform:
 
@@ -71,7 +96,7 @@ Only when no ADMIN exists, run the one-time bootstrap command with secrets injec
 
 The command must refuse to run once an ADMIN exists. Remove bootstrap password/email secrets immediately after success.
 
-## 7. Controlled preview migration
+## 8. Controlled preview migration
 
 Do not delete browser LocalStorage before migration review.
 
@@ -84,9 +109,9 @@ From the real Admin panel:
 5. Migrate the old preview image through verified media storage if desired.
 6. Publish only after manual review.
 
-Never convert the old GBP/mock price automatically.
+Never convert old GBP/mock prices automatically.
 
-## 8. Object storage verification
+## 9. Object storage verification
 
 Private seller documents:
 
@@ -99,11 +124,30 @@ Private seller documents:
 Public product/banner media:
 
 - upload uses signed PUT;
-- backend/server verifies the object before persistence;
+- backend verifies the object before persistence;
 - final public URL uses the configured HTTPS media base URL;
 - image/video size and MIME allowlists remain enforced.
 
-## 9. Zarinpal staging gate
+## 10. Redis verification
+
+- `REDIS_PASSWORD` is present only in the production env/secret store.
+- Redis has no host port mapping.
+- `redis-cli -a "$REDIS_PASSWORD" ping` returns `PONG` from inside the Redis container.
+- API Gateway `/health` reports `redis: ready`.
+- repeated auth requests hit the Redis-backed rate limit across gateway instances.
+
+## 11. Caddy / TLS verification
+
+- Caddy is the only service publishing ports 80 and 443.
+- `MIRAN_SITE_ADDRESS=almiran.ir`.
+- `MIRAN_WWW_SITE_ADDRESS=www.almiran.ir`.
+- `MIRAN_CANONICAL_URL=https://almiran.ir`.
+- HTTP redirects to HTTPS through Caddy automatic HTTPS.
+- `www` redirects permanently to canonical `almiran.ir`.
+- security headers are present.
+- Caddy data/config volumes are persistent so certificates survive container replacement.
+
+## 12. Zarinpal staging gate
 
 Keep `ZARINPAL_SANDBOX=true` initially.
 
@@ -120,41 +164,44 @@ Verify:
 
 Only after these pass should the real Merchant ID and production provider mode be enabled.
 
-## 10. Production cutover
+## 13. Production cutover
 
-1. Take a fresh backup.
-2. Deploy PostgreSQL-compatible API image.
-3. Run migrations.
-4. Start API and require healthy `/health`.
-5. Start web and run smoke tests through the private API network.
-6. Configure TLS reverse proxy for `almiran.ir` and redirect `www` to canonical `almiran.ir`.
+1. Take a fresh PostgreSQL and object-storage backup.
+2. Deploy the exact tested commit using `.github/workflows/deploy-production.yml` or the same backup-first script manually.
+3. Require `docker compose config --services` to equal the eight-service list.
+4. Start the stack and require all eight containers running.
+5. Require API Gateway `/health` to pass Redis/Auth/Catalog/Admin checks.
+6. Require Web health and Caddy config validation.
 7. Keep `SITE_INDEXABLE=false` during smoke testing.
-8. Test register/login/logout, address, catalog, admin access, seller flow, product creation/media, cart, checkout, order history and payment sandbox/production mode as appropriate.
-9. Enable indexing only after final approval.
+8. Test register/login/logout, addresses, catalog, admin access, seller flow, product creation/media, cart, shipping, checkout, order history and payment sandbox.
+9. Confirm `almiran.ir` and canonical `www` redirect over valid TLS.
+10. Enable indexing only after final operational/legal/payment approval.
 
-## 11. Rollback
+## 14. Rollback
 
 Application rollback:
 
-- redeploy the previous known-good web/API image;
+- redeploy the previous known-good commit;
+- keep the previous PostgreSQL backup and checksum;
 - do not downgrade the database blindly if newer migrations are backward compatible;
 - if a database restore is truly required, stop writes first and follow the restore drill below.
 
 Database restore:
 
-1. Stop API writes.
+1. Stop application writes.
 2. Verify backup checksum.
 3. Restore into a separate temporary database first.
 4. Run integrity/smoke checks.
 5. Only then perform the approved production restore/cutover.
 
-## 12. Ongoing operations
+## 15. Ongoing operations
 
 - automated daily PostgreSQL backups plus off-host retention;
+- object-storage backup/versioning for private and public media;
 - periodic restore drill, not backup-only monitoring;
-- database/storage capacity alerts;
-- API/container health monitoring;
-- TLS expiration monitoring;
+- PostgreSQL/Redis/storage capacity alerts;
+- eight-service health monitoring;
+- TLS expiration/renewal monitoring;
 - payment provider failure alerts;
 - failed login/rate-limit/security-event monitoring;
 - audit-log retention and admin review;
