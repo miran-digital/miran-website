@@ -8,6 +8,7 @@ import { RealOrderManager } from "@/features/admin/real-order-manager";
 import { RealProductManager } from "@/features/admin/real-product-manager";
 import { RealProductMediaUploadManager } from "@/features/admin/real-product-media-upload-manager";
 import { RealSellerVerificationManager } from "@/features/admin/real-seller-verification-manager";
+import { RealShippingManager } from "@/features/admin/real-shipping-manager";
 import { RealStorefrontCmsManager } from "@/features/admin/real-storefront-cms-manager";
 import { getCatalogCategories } from "@/features/catalog/catalog-data";
 import { getCurrentUser } from "@/lib/auth/current-user";
@@ -28,6 +29,7 @@ export default async function AdminRoute() {
     <>
       <RealStorefrontCmsManager />
       <RealBannerMediaManager />
+      <RealShippingManager />
       <RealOrderManager />
       <RealCategoryManager />
       <RealProductManager />
