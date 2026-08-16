@@ -38,8 +38,52 @@ CREATE TABLE IF NOT EXISTS shipping_methods (
 CREATE INDEX IF NOT EXISTS shipping_methods_active_sort_idx
   ON shipping_methods(active, sort_order);
 
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS source_cart_id TEXT REFERENCES carts(id) ON DELETE SET NULL;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_method_code TEXT;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_method_name TEXT;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipping_irr BIGINT NOT NULL DEFAULT 0 CHECK (shipping_irr >= 0);
-CREATE INDEX IF NOT EXISTS orders_source_cart_id_idx ON orders(source_cart_id);
+
+CREATE OR REPLACE FUNCTION miran_cleanup_paid_order_from_cart()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  active_cart_id TEXT;
+BEGIN
+  IF NEW.status = 'PAID' AND OLD.status IS DISTINCT FROM 'PAID' THEN
+    SELECT id INTO active_cart_id
+    FROM carts
+    WHERE user_id = NEW.user_id AND status = 'ACTIVE'
+    LIMIT 1
+    FOR UPDATE;
+
+    IF active_cart_id IS NOT NULL THEN
+      DELETE FROM cart_items ci
+      USING order_items oi
+      WHERE ci.cart_id = active_cart_id
+        AND oi.order_id = NEW.id
+        AND oi.product_id = ci.product_id
+        AND ci.quantity <= oi.quantity;
+
+      UPDATE cart_items ci
+      SET quantity = ci.quantity - oi.quantity,
+          updated_at = CURRENT_TIMESTAMP
+      FROM order_items oi
+      WHERE ci.cart_id = active_cart_id
+        AND oi.order_id = NEW.id
+        AND oi.product_id = ci.product_id
+        AND ci.quantity > oi.quantity;
+
+      UPDATE carts
+      SET updated_at = CURRENT_TIMESTAMP
+      WHERE id = active_cart_id;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS orders_paid_cart_cleanup ON orders;
+CREATE TRIGGER orders_paid_cart_cleanup
+AFTER UPDATE OF status ON orders
+FOR EACH ROW
+EXECUTE FUNCTION miran_cleanup_paid_order_from_cart();
