@@ -1,16 +1,24 @@
 :root {
-  --miran-color-brand: #111827;
+  --miran-color-brand: #14161b;
   --miran-color-brand-contrast: #ffffff;
+  --miran-color-accent: #e73d56;
+  --miran-color-accent-strong: #cf2943;
+  --miran-color-accent-soft: #fff1f3;
   --miran-color-surface: #ffffff;
-  --miran-color-surface-muted: #f3f4f6;
-  --miran-color-text: #111827;
-  --miran-color-text-muted: #6b7280;
-  --miran-color-border: #e5e7eb;
+  --miran-color-surface-muted: #f6f7f9;
+  --miran-color-surface-elevated: #ffffff;
+  --miran-color-page: #fbfbfc;
+  --miran-color-text: #17191f;
+  --miran-color-text-muted: #69707d;
+  --miran-color-border: #e7e9ee;
+  --miran-color-border-strong: #d6dae2;
   --miran-color-danger: #b91c1c;
-  --miran-radius-sm: 0.5rem;
-  --miran-radius-md: 0.75rem;
-  --miran-radius-lg: 1rem;
-  --miran-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.06);
+  --miran-radius-sm: 0.55rem;
+  --miran-radius-md: 0.85rem;
+  --miran-radius-lg: 1.25rem;
+  --miran-radius-xl: 1.75rem;
+  --miran-shadow-sm: 0 2px 10px rgb(17 24 39 / 0.05);
+  --miran-shadow-lg: 0 18px 60px rgb(17 24 39 / 0.10);
   --miran-space-1: 0.25rem;
   --miran-space-2: 0.5rem;
   --miran-space-3: 0.75rem;
@@ -38,7 +46,10 @@
   border: 1px solid transparent;
   font: inherit;
   cursor: pointer;
+  transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
 }
+
+.miran-button:hover { transform: translateY(-1px); }
 
 .miran-button--primary {
   background: var(--miran-color-brand);
