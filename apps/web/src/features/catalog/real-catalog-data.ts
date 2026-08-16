@@ -80,12 +80,21 @@ function categoryOf(product: ApiProduct): CatalogCategory {
       };
 }
 
+function primaryImageOf(product: ApiProduct) {
+  const images = product.media
+    .filter((item) => item.type === "IMAGE" && Boolean(item.url))
+    .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary) || a.sortOrder - b.sortOrder);
+  return images[0]?.url;
+}
+
 function summaryOf(product: ApiProduct): CatalogProductSummary {
+  const imageUrl = primaryImageOf(product);
   return {
     id: product.id,
     title: product.title,
     href: `/product/${encodeURIComponent(product.slug)}`,
     mediaLabel: product.brand || "Miran",
+    ...(imageUrl ? { imageUrl } : {}),
     brandId: brandId(product.brand || "Miran"),
     brandName: product.brand || "Miran",
     categorySlugs: product.category ? [product.category.slug] : [],
