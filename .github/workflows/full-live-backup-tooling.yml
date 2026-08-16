@@ -1,0 +1,50 @@
+name: Full Live Backup Tooling
+
+on:
+  pull_request:
+    paths:
+      - "infra/backup/**"
+      - "docs/operations/full-live-backup.md"
+      - ".github/workflows/full-live-backup-tooling.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate backup and restore shell syntax
+        run: |
+          bash -n infra/backup/create-full-live-backup.sh
+          bash -n infra/backup/verify-full-live-backup.sh
+          bash -n infra/backup/restore-full-live-backup.sh
+
+      - name: Verify restore fails closed without explicit opt-in
+        run: |
+          set -euo pipefail
+          if bash infra/backup/restore-full-live-backup.sh >/tmp/restore.out 2>/tmp/restore.err; then
+            echo "Restore unexpectedly ran without MIRAN_RESTORE_APPLY=true" >&2
+            exit 1
+          fi
+          grep -F "Restore is disabled by default" /tmp/restore.err
+
+          if MIRAN_RESTORE_APPLY=true bash infra/backup/restore-full-live-backup.sh >/tmp/restore-target.out 2>/tmp/restore-target.err; then
+            echo "Restore unexpectedly ran without MIRAN_RESTORE_TARGET=NEW_HOST" >&2
+            exit 1
+          fi
+          grep -F "MIRAN_RESTORE_TARGET=NEW_HOST" /tmp/restore-target.err
+
+      - name: Assert the approved eight-service contract remains explicit
+        run: |
+          set -euo pipefail
+          for service in web api-gateway auth-service catalog-service admin-service postgres redis caddy; do
+            grep -F "$service" infra/backup/create-full-live-backup.sh >/dev/null
+            grep -F "$service" infra/backup/restore-full-live-backup.sh >/dev/null
+          done
+          grep -F "private" infra/backup/create-full-live-backup.sh >/dev/null
+          grep -F "public" infra/backup/create-full-live-backup.sh >/dev/null
+          grep -F "pg_dump" infra/backup/create-full-live-backup.sh >/dev/null
+          grep -F "SHA256SUMS" infra/backup/create-full-live-backup.sh >/dev/null
