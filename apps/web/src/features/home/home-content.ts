@@ -49,15 +49,15 @@ export type HomeContent = {
   trustServices: readonly TrustService[];
 };
 
-const mockHomeContent: HomeContent = {
+const defaultHomeContent: HomeContent = {
   hero: {
-    eyebrow: "خرید هوشمند با Miran Shop",
-    title: "کالاهای منتخب برای خریدی سریع، ساده و مطمئن",
+    eyebrow: "Marketplace مدرن Miran",
+    title: "خرید ساده‌تر با قیمت و موجودی واقعی",
     description:
-      "یک Marketplace مدرن با جست‌وجوی سریع، دسته‌بندی روشن و تجربه خرید بهینه برای موبایل و دسکتاپ.",
-    primaryAction: { label: "مشاهده پیشنهادهای ویژه", href: "/offers" },
+      "محصولات منتشرشده، تخفیف‌ها، موجودی، نشانی، روش ارسال و سفارش در Miran از جریان واقعی فروشگاه خوانده و کنترل می‌شوند.",
+    primaryAction: { label: "مشاهده پیشنهادهای شگفت‌انگیز", href: "/offers" },
     secondaryAction: { label: "مرور دسته‌بندی‌ها", href: "#categories" },
-    mediaLabel: "فضای رسانه‌ای Hero — آماده اتصال به CMS و Media Service",
+    mediaLabel: "Miran Marketplace — خرید با Catalog و موجودی واقعی",
   },
   categories: [
     {
@@ -110,47 +110,40 @@ const mockHomeContent: HomeContent = {
     },
   ],
   brands: {
-    title: "برندهای منتخب",
-    description: "دسترسی سریع به برندهایی که مشتریان بیشتر دنبال می‌کنند.",
+    title: "برندهای موجود در Miran",
+    description: "فهرست برند صفحه اصلی از Catalog واقعی فروشگاه ساخته می‌شود.",
     href: "/brands",
     linkLabel: "مشاهده همه برندها",
-    items: [
-      { id: "nova", name: "Nova", href: "/brand/nova" },
-      { id: "vertex", name: "Vertex", href: "/brand/vertex" },
-      { id: "sonic", name: "Sonic", href: "/brand/sonic" },
-      { id: "haven", name: "Haven", href: "/brand/haven" },
-      { id: "loom", name: "Loom", href: "/brand/loom" },
-      { id: "pure", name: "Pure", href: "/brand/pure" },
-    ],
+    items: [],
   },
   trustServices: [
     {
-      id: "secure-payment",
-      title: "پرداخت امن",
-      description: "فرایند پرداخت شفاف و آماده اتصال به درگاه‌های امن.",
-      symbol: "امن",
+      id: "verified-payment",
+      title: "پرداخت تأییدشده",
+      description: "سفارش فقط پس از Verify موفق درگاه به وضعیت پرداخت‌شده می‌رود.",
+      symbol: "تأیید",
     },
     {
-      id: "fast-delivery",
-      title: "ارسال سریع",
-      description: "ساختار آماده برای روش‌های ارسال و رهگیری سفارش.",
-      symbol: "سریع",
+      id: "real-inventory",
+      title: "موجودی واقعی",
+      description: "موجودی در Checkout دوباره کنترل و برای سفارش در انتظار پرداخت رزرو می‌شود.",
+      symbol: "موجودی",
     },
     {
-      id: "support",
-      title: "پشتیبانی پاسخ‌گو",
-      description: "مسیر روشن برای دریافت کمک قبل و بعد از خرید.",
-      symbol: "۲۴/۷",
+      id: "verified-sellers",
+      title: "فروشندگان بررسی‌شده",
+      description: "مدارک، ضمانت و وضعیت فروشنده پیش از تأیید توسط مدیر کنترل می‌شود.",
+      symbol: "فروشنده",
     },
     {
-      id: "returns",
-      title: "مرجوعی شفاف",
-      description: "قوانین بازگشت کالا به‌صورت قابل‌فهم و در دسترس.",
-      symbol: "بازگشت",
+      id: "order-history",
+      title: "پیگیری سفارش",
+      description: "اقلام، نشانی، روش ارسال و وضعیت پرداخت در تاریخچه سفارش قابل مشاهده است.",
+      symbol: "سفارش",
     },
   ],
 };
 
 export async function getHomeContent(): Promise<HomeContent> {
-  return mockHomeContent;
+  return defaultHomeContent;
 }
