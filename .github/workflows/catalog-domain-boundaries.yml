@@ -1,0 +1,27 @@
+name: Catalog Domain Boundaries
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  domain-boundaries:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Verify domain ownership contract
+        run: node --test services/catalog-service/tests/domain-boundaries.test.js
+
+      - name: Verify Phase 2 does not add a ninth runtime service
+        run: |
+          expected="admin-service api-gateway auth-service caddy catalog-service postgres redis web"
+          actual="$(docker compose -f infra/docker-compose.production.yml config --services | sort | tr '\n' ' ' | sed 's/ $//')"
+          test "$actual" = "$expected"
