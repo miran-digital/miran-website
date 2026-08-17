@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { withPostgresTransaction } from "./database.js";
+import { PostgresInventoryService } from "./inventory-service.js";
 import { quoteShippingMethod } from "./logistics-service.js";
 
 function fail(message, code = "INVALID_INPUT") {
@@ -57,10 +58,16 @@ function mapOrder(row) {
 }
 
 export class PostgresCheckoutService {
-  constructor(pool, marketplace, cart, { reservationMinutes = 30 } = {}) {
+  constructor(
+    pool,
+    marketplace,
+    cart,
+    { reservationMinutes = 30, inventory = new PostgresInventoryService(pool) } = {},
+  ) {
     this.pool = pool;
     this.marketplace = marketplace;
     this.cart = cart;
+    this.inventory = inventory;
     this.reservationMinutes = reservationMinutes;
   }
 
@@ -111,19 +118,20 @@ export class PostgresCheckoutService {
 
       for (const item of items.rows) {
         const quantity = Number(item.quantity);
-        assert(Number.isSafeInteger(quantity) && quantity > 0 && quantity <= 1000, "Cart quantity is invalid");
+        assert(
+          Number.isSafeInteger(quantity) && quantity > 0 && quantity <= 1000,
+          "Cart quantity is invalid",
+        );
         const locked = await client.query(
-          `SELECT p.*,i.stock_on_hand,i.stock_reserved
+          `SELECT p.*
            FROM products p
-           JOIN inventory i ON i.product_id=p.id
            WHERE p.id=$1 AND p.status='PUBLISHED'
-           FOR UPDATE OF p,i`,
+           FOR UPDATE`,
           [item.product_id],
         );
         const product = locked.rows[0];
         assert(product, "Published product not found", "NOT_FOUND");
-        const available = Number(product.stock_on_hand) - Number(product.stock_reserved);
-        assert(available >= quantity, "Insufficient stock", "OUT_OF_STOCK");
+        await this.inventory.assertAvailable(client, product.id, quantity);
         const pricing = priceProduct(product, now);
         subtotalIrr += pricing.baseIrr * quantity;
         discountIrr += pricing.discountIrr * quantity;
@@ -178,15 +186,12 @@ export class PostgresCheckoutService {
 
       const expiresAt = new Date(now.getTime() + this.reservationMinutes * 60_000);
       for (const line of lines) {
-        const reserved = await client.query(
-          `UPDATE inventory
-           SET stock_reserved=stock_reserved+$1,
-               version=version+1,
-               updated_at=CURRENT_TIMESTAMP
-           WHERE product_id=$2 AND stock_on_hand-stock_reserved >= $1`,
-          [line.quantity, line.product.id],
-        );
-        assert(reserved.rowCount === 1, "Insufficient stock", "OUT_OF_STOCK");
+        await this.inventory.reserve(client, {
+          orderId,
+          productId: line.product.id,
+          quantity: line.quantity,
+          expiresAt,
+        });
         await client.query(
           `INSERT INTO order_items
            (id,order_id,product_id,title_snapshot,unit_base_price_irr,unit_final_price_irr,quantity,line_total_irr)
@@ -201,12 +206,6 @@ export class PostgresCheckoutService {
             line.quantity,
             line.pricing.finalIrr * line.quantity,
           ],
-        );
-        await client.query(
-          `INSERT INTO inventory_reservations
-           (id,order_id,product_id,quantity,status,expires_at)
-           VALUES($1,$2,$3,$4,'ACTIVE',$5)`,
-          [randomUUID(), orderId, line.product.id, line.quantity, expiresAt],
         );
       }
 
