@@ -1,0 +1,96 @@
+name: Caddy Edge Smoke
+
+on:
+  pull_request:
+    paths:
+      - "infra/caddy/**"
+      - "infra/docker-compose.production.yml"
+      - "apps/web/**"
+      - ".github/workflows/caddy-edge-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  caddy-edge-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      POSTGRES_DB: miran_caddy_ci
+      POSTGRES_USER: miran
+      POSTGRES_PASSWORD: miran_caddy_ci_postgres_password
+      REDIS_PASSWORD: miran_caddy_ci_redis_password
+      DATABASE_POOL_MAX: 4
+      SITE_INDEXABLE: "false"
+      MIRAN_PUBLIC_URL: http://localhost:3800
+      MIRAN_SITE_ADDRESS: http://localhost
+      MIRAN_WWW_SITE_ADDRESS: http://www.localhost
+      MIRAN_CANONICAL_URL: http://localhost:3800
+      HTTP_PORT: 3800
+      HTTPS_PORT: 3843
+      ZARINPAL_SANDBOX: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and start exact eight-service stack
+        run: docker compose -f infra/docker-compose.production.yml up -d --build
+
+      - name: Verify Caddy config and storefront edge
+        run: |
+          set -euo pipefail
+          docker compose -f infra/docker-compose.production.yml exec -T caddy caddy validate --config /etc/caddy/Caddyfile
+
+          ready=0
+          for attempt in $(seq 1 90); do
+            if curl -fsS -H 'Host: localhost' http://127.0.0.1:3800/ >/tmp/caddy-home.html; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = "1"
+          test -s /tmp/caddy-home.html
+
+      - name: Verify edge security headers
+        run: |
+          set -euo pipefail
+          curl -sS -D /tmp/caddy-headers.txt -o /tmp/caddy-body.html -H 'Host: localhost' http://127.0.0.1:3800/
+          grep -Fqi 'Strict-Transport-Security: max-age=31536000; includeSubDomains' /tmp/caddy-headers.txt
+          grep -Fqi 'X-Content-Type-Options: nosniff' /tmp/caddy-headers.txt
+          grep -Fqi 'Referrer-Policy: strict-origin-when-cross-origin' /tmp/caddy-headers.txt
+          grep -Fqi 'X-Frame-Options: DENY' /tmp/caddy-headers.txt
+          grep -Fqi 'Permissions-Policy: camera=(), microphone=(), geolocation=()' /tmp/caddy-headers.txt
+          grep -Fqi 'Cross-Origin-Opener-Policy: same-origin' /tmp/caddy-headers.txt
+          if grep -Eqi '^Server:' /tmp/caddy-headers.txt; then
+            echo "Caddy edge must not expose a Server header" >&2
+            exit 1
+          fi
+
+      - name: Verify www permanent canonical redirect
+        run: |
+          set -euo pipefail
+          status="$(curl -sS -D /tmp/caddy-redirect.txt -o /dev/null -w '%{http_code}' -H 'Host: www.localhost' 'http://127.0.0.1:3800/probe?x=1')"
+          test "$status" = "308"
+          grep -Fqi 'Location: http://localhost:3800/probe?x=1' /tmp/caddy-redirect.txt
+
+      - name: Verify only Caddy publishes host ports
+        run: |
+          set -euo pipefail
+          for service in postgres redis auth-service catalog-service admin-service api-gateway web; do
+            container_id="$(docker compose -f infra/docker-compose.production.yml ps -q "$service")"
+            published="$(docker inspect -f '{{range $port,$bindings := .NetworkSettings.Ports}}{{if $bindings}}{{$port}}={{json $bindings}}{{end}}{{end}}' "$container_id")"
+            if [ -n "$published" ]; then
+              echo "$service unexpectedly publishes a host port" >&2
+              exit 1
+            fi
+          done
+          docker compose -f infra/docker-compose.production.yml port caddy 80 | grep -q ':3800$'
+          docker compose -f infra/docker-compose.production.yml port caddy 443 | grep -q ':3843$'
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose -f infra/docker-compose.production.yml logs --no-color
+
+      - name: Stop Caddy test stack
+        if: always()
+        run: docker compose -f infra/docker-compose.production.yml down -v --remove-orphans
