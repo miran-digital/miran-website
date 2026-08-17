@@ -21,6 +21,9 @@ jobs:
         run: node --test services/catalog-service/tests/domain-boundaries.test.js
 
       - name: Verify Phase 2 does not add a ninth runtime service
+        env:
+          POSTGRES_PASSWORD: miran_phase2_ci_postgres_password
+          REDIS_PASSWORD: miran_phase2_ci_redis_password
         run: |
           expected="admin-service api-gateway auth-service caddy catalog-service postgres redis web"
           actual="$(docker compose -f infra/docker-compose.production.yml config --services | sort | tr '\n' ' ' | sed 's/ $//')"
