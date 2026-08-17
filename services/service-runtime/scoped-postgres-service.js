@@ -87,10 +87,19 @@ export async function startScopedPostgresService({
           signal: AbortSignal.timeout(5_000),
         });
         if (!response.ok) throw new Error("CORE_HEALTH_FAILED");
+        const coreHealth = await response.json().catch(() => null);
+        if (coreHealth?.ok !== true) throw new Error("CORE_HEALTH_INVALID");
+        if (
+          runMaintenance &&
+          (!maintenance || maintenance.exitCode !== null || maintenance.signalCode !== null)
+        ) {
+          throw new Error("MAINTENANCE_UNAVAILABLE");
+        }
         return json(res, 200, {
           ok: true,
           service: serviceName,
           database: "postgresql",
+          maintenance: runMaintenance ? "running" : "disabled",
           boundary: "phase1-independent-runtime",
         });
       }
