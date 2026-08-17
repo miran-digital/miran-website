@@ -139,6 +139,30 @@ jobs:
           }
           NODE
 
+      - name: Verify Catalog service boundary and maintenance health
+        run: |
+          docker compose -f infra/docker-compose.production.yml exec -T catalog-service node <<'NODE'
+          const health = await fetch('http://127.0.0.1:3001/health');
+          if (!health.ok) process.exit(1);
+          const healthBody = await health.json();
+          if (healthBody.ok !== true || healthBody.service !== 'catalog-service') process.exit(1);
+          if (healthBody.maintenance !== 'running') {
+            console.error('Catalog maintenance not healthy', healthBody);
+            process.exit(1);
+          }
+
+          const categories = await fetch('http://127.0.0.1:3001/v1/catalog/categories');
+          if (categories.status !== 200) process.exit(1);
+
+          for (const path of ['/v1/admin/categories', '/v1/me']) {
+            const response = await fetch(`http://127.0.0.1:3001${path}`);
+            if (response.status !== 404) {
+              console.error('Catalog service accepted outside-scope route', path, response.status);
+              process.exit(1);
+            }
+          }
+          NODE
+
       - name: Verify Redis-backed gateway auth rate limit
         run: |
           docker compose -f infra/docker-compose.production.yml exec -T api-gateway node <<'NODE'
