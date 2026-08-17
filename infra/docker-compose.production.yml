@@ -41,7 +41,7 @@ services:
     restart: unless-stopped
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
-    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    command: ["sh", "-c", "exec redis-server --appendonly yes --appendfsync everysec --protected-mode yes --requirepass \"$$REDIS_PASSWORD\""]
     volumes:
       - miran_redis_data:/data
     healthcheck:

@@ -1,0 +1,70 @@
+name: Redis Service Smoke
+
+on:
+  pull_request:
+    paths:
+      - "infra/docker-compose.production.yml"
+      - ".github/workflows/redis-service-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  redis-service-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      POSTGRES_PASSWORD: miran_redis_ci_postgres_password
+      REDIS_PASSWORD: miran_redis_ci_password
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start Redis
+        run: docker compose -f infra/docker-compose.production.yml up -d redis
+
+      - name: Verify authentication durability and private binding
+        run: |
+          set -euo pipefail
+
+          unauth="$(docker compose -f infra/docker-compose.production.yml exec -T redis redis-cli --raw ping 2>&1 || true)"
+          echo "$unauth" | grep -qi 'NOAUTH'
+
+          redis_cmd() {
+            docker compose -f infra/docker-compose.production.yml exec -T redis sh -ec \
+              'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning --raw "$@"' -- "$@"
+          }
+
+          test "$(redis_cmd ping)" = "PONG"
+          test "$(redis_cmd config get appendonly | tail -n1)" = "yes"
+          test "$(redis_cmd config get appendfsync | tail -n1)" = "everysec"
+          test "$(redis_cmd config get protected-mode | tail -n1)" = "yes"
+
+          test "$(redis_cmd set miran:ci:persistence redis-persisted-value)" = "OK"
+          sleep 2
+
+          redis_id="$(docker compose -f infra/docker-compose.production.yml ps -q redis)"
+          published="$(docker inspect -f '{{with index .NetworkSettings.Ports "6379/tcp"}}{{json .}}{{end}}' "$redis_id")"
+          if [ -n "$published" ]; then
+            echo "Redis must not publish host port 6379" >&2
+            exit 1
+          fi
+
+          docker compose -f infra/docker-compose.production.yml restart redis
+          ready=0
+          for attempt in $(seq 1 30); do
+            if [ "$(redis_cmd ping 2>/dev/null || true)" = "PONG" ]; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" = "1"
+          test "$(redis_cmd get miran:ci:persistence)" = "redis-persisted-value"
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose -f infra/docker-compose.production.yml logs --no-color redis
+
+      - name: Stop Redis test stack
+        if: always()
+        run: docker compose -f infra/docker-compose.production.yml down -v --remove-orphans
