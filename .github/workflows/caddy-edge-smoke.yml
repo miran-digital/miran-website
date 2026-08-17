@@ -70,7 +70,7 @@ jobs:
         run: |
           set -euo pipefail
           status="$(curl -sS -D /tmp/caddy-redirect.txt -o /dev/null -w '%{http_code}' -H 'Host: www.localhost' 'http://127.0.0.1:3800/probe?x=1')"
-          test "$status" = "308"
+          test "$status" = "301"
           grep -Fqi 'Location: http://localhost:3800/probe?x=1' /tmp/caddy-redirect.txt
 
       - name: Verify only Caddy publishes host ports
