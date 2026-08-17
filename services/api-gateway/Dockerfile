@@ -12,6 +12,6 @@ USER node
 EXPOSE 3001
 
 HEALTHCHECK --interval=20s --timeout=6s --start-period=30s --retries=5 \
-  CMD node -e "fetch('http://127.0.0.1:3001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:3001/health').then(async r=>{if(!r.ok)process.exit(1);const body=await r.json();if(body?.ok!==true)process.exit(1)}).catch(()=>process.exit(1))"
 
 CMD ["node", "services/api-gateway/src/start.js"]
