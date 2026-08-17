@@ -1,0 +1,77 @@
+name: Admin Service Smoke
+
+on:
+  pull_request:
+    paths:
+      - "services/admin-service/**"
+      - "services/service-runtime/**"
+      - "services/marketplace-core/postgres/**"
+      - "infra/docker-compose.production.yml"
+      - ".github/workflows/admin-service-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  admin-service-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      POSTGRES_DB: miran_admin_ci
+      POSTGRES_USER: miran
+      POSTGRES_PASSWORD: miran_admin_ci_password
+      REDIS_PASSWORD: miran_admin_redis_ci_password
+      DATABASE_POOL_MAX: 4
+      ZARINPAL_SANDBOX: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start Admin test dependencies
+        run: docker compose -f infra/docker-compose.production.yml up -d --build postgres auth-service admin-service
+      - name: Bootstrap exactly one ephemeral Admin
+        run: |
+          set -euo pipefail
+          docker compose -f infra/docker-compose.production.yml exec -T -e MIRAN_BOOTSTRAP_ADMIN_EMAIL="admin-ci@example.com" -e MIRAN_BOOTSTRAP_ADMIN_PASSWORD="admin-ci-password-very-secure-123" admin-service node services/marketplace-core/postgres/bootstrap-admin.js
+          if docker compose -f infra/docker-compose.production.yml exec -T -e MIRAN_BOOTSTRAP_ADMIN_EMAIL="second-admin-ci@example.com" -e MIRAN_BOOTSTRAP_ADMIN_PASSWORD="second-admin-ci-password-very-secure-123" admin-service node services/marketplace-core/postgres/bootstrap-admin.js; then
+            echo "Second admin bootstrap unexpectedly succeeded" >&2
+            exit 1
+          fi
+      - name: Verify Admin RBAC and service boundary
+        run: |
+          set -euo pipefail
+          customer_token="$(docker compose -f infra/docker-compose.production.yml exec -T auth-service node <<'NODE'
+          const email = `customer-admin-smoke-${Date.now()}@example.com`;
+          const password = 'customer-password-very-secure-123';
+          let response = await fetch('http://127.0.0.1:3001/v1/auth/register', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})});
+          if (response.status !== 201) process.exit(1);
+          response = await fetch('http://127.0.0.1:3001/v1/auth/login', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email,password})});
+          if (!response.ok) process.exit(1);
+          console.log((await response.json()).token);
+          NODE
+          )"
+          admin_token="$(docker compose -f infra/docker-compose.production.yml exec -T auth-service node <<'NODE'
+          const response = await fetch('http://127.0.0.1:3001/v1/auth/login', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:'admin-ci@example.com',password:'admin-ci-password-very-secure-123'})});
+          if (!response.ok) process.exit(1);
+          console.log((await response.json()).token);
+          NODE
+          )"
+          test -n "$customer_token" && test -n "$admin_token"
+          docker compose -f infra/docker-compose.production.yml exec -T -e CUSTOMER_TOKEN="$customer_token" -e ADMIN_TOKEN="$admin_token" admin-service node <<'NODE'
+          const health = await fetch('http://127.0.0.1:3001/health');
+          if (!health.ok) process.exit(1);
+          const healthBody = await health.json();
+          if (healthBody.ok !== true || healthBody.service !== 'admin-service') process.exit(1);
+          const customer = await fetch('http://127.0.0.1:3001/v1/admin/categories',{headers:{authorization:`Bearer ${process.env.CUSTOMER_TOKEN}`}});
+          if (customer.status !== 403) process.exit(1);
+          const admin = await fetch('http://127.0.0.1:3001/v1/admin/categories',{headers:{authorization:`Bearer ${process.env.ADMIN_TOKEN}`}});
+          if (admin.status !== 200) process.exit(1);
+          for (const path of ['/v1/catalog/categories','/v1/me']) {
+            const response = await fetch(`http://127.0.0.1:3001${path}`,{headers:{authorization:`Bearer ${process.env.ADMIN_TOKEN}`}});
+            if (response.status !== 404) process.exit(1);
+          }
+          NODE
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose -f infra/docker-compose.production.yml logs --no-color postgres auth-service admin-service
+      - name: Stop Admin test stack
+        if: always()
+        run: docker compose -f infra/docker-compose.production.yml down -v --remove-orphans
