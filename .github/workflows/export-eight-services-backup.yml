@@ -1,0 +1,70 @@
+name: Export Eight Services Backup
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/export-eight-services-backup.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      BACKUP_SHA: f55ce8a63ac9327b3f8b8e29e14324285de523cf
+      BACKUP_FILE: Miran-Shop-8-Services-Full-Backup-f55ce8a.zip
+      POSTGRES_DB: miran_backup_check
+      POSTGRES_USER: miran
+      POSTGRES_PASSWORD: backup-check-only
+      REDIS_PASSWORD: backup-check-only
+      DATABASE_POOL_MAX: 4
+      SITE_INDEXABLE: "false"
+      MIRAN_PUBLIC_URL: http://localhost:3800
+      MIRAN_SITE_ADDRESS: http://localhost
+      MIRAN_WWW_SITE_ADDRESS: http://www.localhost
+      MIRAN_CANONICAL_URL: http://localhost:3800
+      HTTP_PORT: 3800
+      HTTPS_PORT: 3843
+      ZARINPAL_SANDBOX: "true"
+    steps:
+      - name: Checkout exact signed-off commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BACKUP_SHA }}
+          fetch-depth: 1
+
+      - name: Verify exact eight-service topology
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BACKUP_SHA"
+          expected="admin-service api-gateway auth-service caddy catalog-service postgres redis web"
+          actual="$(docker compose -f infra/docker-compose.production.yml config --services | sort | tr '\n' ' ' | sed 's/ $//')"
+          test "$actual" = "$expected"
+          test -d apps/web
+          test -d services/api-gateway
+          test -d services/auth-service
+          test -d services/catalog-service
+          test -d services/admin-service
+          test -f infra/docker-compose.production.yml
+          test -f infra/caddy/Caddyfile
+
+      - name: Create complete source backup ZIP
+        run: |
+          set -euo pipefail
+          git archive --format=zip --output="$BACKUP_FILE" "$BACKUP_SHA"
+          sha256sum "$BACKUP_FILE" > "$BACKUP_FILE.sha256"
+          printf 'commit=%s\nservices=web,api-gateway,auth-service,catalog-service,admin-service,postgres,redis,caddy\n' "$BACKUP_SHA" > BACKUP-MANIFEST.txt
+          unzip -t "$BACKUP_FILE"
+
+      - name: Upload verified backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: Miran-Shop-8-Services-Full-Backup-f55ce8a
+          path: |
+            Miran-Shop-8-Services-Full-Backup-f55ce8a.zip
+            Miran-Shop-8-Services-Full-Backup-f55ce8a.zip.sha256
+            BACKUP-MANIFEST.txt
+          if-no-files-found: error
+          retention-days: 30
