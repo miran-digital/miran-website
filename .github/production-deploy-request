@@ -1,6 +1,0 @@
-Miran Shop production rollout request
-Requested: 2026-08-17
-Target domain: almiran.ir
-Expected runtime: exactly 8 services
-Safety: preflight + verified full live backup before deploy
-Initial empty host: not allowed from this trigger
