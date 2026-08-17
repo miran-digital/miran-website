@@ -30,6 +30,26 @@ export class PostgresPaymentService {
     { callbackUrl, email = null, mobile = null, now = new Date() },
   ) {
     const prepared = await withPostgresTransaction(this.pool, async (client) => {
+      const visibleOrderResult = await client.query(
+        "SELECT * FROM orders WHERE id=$1 AND user_id=$2",
+        [orderId, userId],
+      );
+      const visibleOrder = visibleOrderResult.rows[0];
+      assert(visibleOrder, "Order not found", "NOT_FOUND");
+      assert(visibleOrder.status === "PENDING_PAYMENT", "Order is not payable", "CONFLICT");
+
+      // Keep lock ordering compatible with reservation maintenance:
+      // reservations -> order. This prevents maintenance and payment start
+      // from deadlocking while preserving an ownership check before locking.
+      const reservations = await client.query(
+        `SELECT * FROM inventory_reservations
+         WHERE order_id=$1 AND status='ACTIVE'
+         ORDER BY product_id
+         FOR UPDATE`,
+        [orderId],
+      );
+      assert(reservations.rowCount > 0, "No active inventory reservation", "CONFLICT");
+
       const orderResult = await client.query(
         "SELECT * FROM orders WHERE id=$1 AND user_id=$2 FOR UPDATE",
         [orderId, userId],
@@ -40,14 +60,6 @@ export class PostgresPaymentService {
       const amountIrr = money(order.total_irr, "order amount");
       assert(amountIrr > 0, "Order amount must be positive", "INVALID_PAYMENT_AMOUNT");
 
-      const reservations = await client.query(
-        `SELECT * FROM inventory_reservations
-         WHERE order_id=$1 AND status='ACTIVE'
-         ORDER BY product_id
-         FOR UPDATE`,
-        [orderId],
-      );
-      assert(reservations.rowCount > 0, "No active inventory reservation", "CONFLICT");
       if (reservations.rows.some((item) => new Date(item.expires_at) <= now)) {
         await this.releaseOrderInsideTransaction(client, orderId, "PAYMENT_FAILED");
         return { expired: true, orderId };
@@ -102,9 +114,7 @@ export class PostgresPaymentService {
     });
 
     if (prepared.expired) {
-
       fail("Inventory reservation has expired", "CONFLICT");
-
     }
 
     if (prepared.reused) return prepared;
@@ -192,35 +202,53 @@ export class PostgresPaymentService {
         "SELECT * FROM payments WHERE id=$1 FOR UPDATE",
         [payment.id],
       );
-      const freshOrderResult = await client.query(
-        "SELECT * FROM orders WHERE id=$1 FOR UPDATE",
-        [payment.order_id],
-      );
       const freshPayment = freshPaymentResult.rows[0];
-      const freshOrder = freshOrderResult.rows[0];
-      assert(freshPayment && freshOrder, "Payment state could not be loaded", "NOT_FOUND");
-      if (freshPayment.status === "VERIFIED" && freshOrder.status === "PAID") {
+      assert(freshPayment, "Payment state could not be loaded", "NOT_FOUND");
+
+      // Another verifier may have completed while the provider call was in flight.
+      // The payment row serializes verification, so the paid order can be read
+      // without taking the order-before-reservation lock path.
+      if (freshPayment.status === "VERIFIED") {
+        const completedOrderResult = await client.query(
+          "SELECT * FROM orders WHERE id=$1",
+          [payment.order_id],
+        );
+        const completedOrder = completedOrderResult.rows[0];
+        assert(
+          completedOrder?.status === "PAID",
+          "Verified payment has inconsistent order state",
+          "CONFLICT",
+        );
         return {
-          orderId: freshOrder.id,
+          orderId: completedOrder.id,
           paymentId: freshPayment.id,
           referenceId: freshPayment.reference_id,
           alreadyVerified: true,
         };
       }
+
+      // Match maintenance/cancellation lock order: reservations -> order.
+      const reservations = await client.query(
+        `SELECT * FROM inventory_reservations
+         WHERE order_id=$1 AND status='ACTIVE'
+         ORDER BY product_id
+         FOR UPDATE`,
+        [payment.order_id],
+      );
+      assert(reservations.rowCount > 0, "No active reservation for verified payment", "CONFLICT");
+
+      const freshOrderResult = await client.query(
+        "SELECT * FROM orders WHERE id=$1 FOR UPDATE",
+        [payment.order_id],
+      );
+      const freshOrder = freshOrderResult.rows[0];
+      assert(freshOrder, "Payment state could not be loaded", "NOT_FOUND");
       assert(
         freshOrder.status === "PENDING_PAYMENT" && freshPayment.status === "REDIRECTED",
         "Payment state changed before verification",
         "CONFLICT",
       );
 
-      const reservations = await client.query(
-        `SELECT * FROM inventory_reservations
-         WHERE order_id=$1 AND status='ACTIVE'
-         ORDER BY product_id
-         FOR UPDATE`,
-        [freshOrder.id],
-      );
-      assert(reservations.rowCount > 0, "No active reservation for verified payment", "CONFLICT");
       for (const reservation of reservations.rows) {
         const inventoryResult = await client.query(
           "SELECT * FROM inventory WHERE product_id=$1 FOR UPDATE",
