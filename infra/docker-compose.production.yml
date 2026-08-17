@@ -30,7 +30,7 @@ services:
     volumes:
       - miran_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-miran} -d ${POSTGRES_DB:-miran}"]
+      test: ["CMD-SHELL", "PGPASSWORD=\"$$POSTGRES_PASSWORD\" psql -h 127.0.0.1 -U ${POSTGRES_USER:-miran} -d ${POSTGRES_DB:-miran} -Atqc 'SELECT 1' | grep -qx 1"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -67,7 +67,7 @@ services:
       PORT: 3001
       SCOPED_CORE_PORT: 3901
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(async r=>{if(!r.ok)process.exit(1);const body=await r.json();if(body?.ok!==true)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -90,7 +90,7 @@ services:
       SCOPED_CORE_PORT: 3901
       MIRAN_MAINTENANCE_INTERVAL_MS: ${MIRAN_MAINTENANCE_INTERVAL_MS:-60000}
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(async r=>{if(!r.ok)process.exit(1);const body=await r.json();if(body?.ok!==true)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -112,7 +112,7 @@ services:
       PORT: 3001
       SCOPED_CORE_PORT: 3901
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(async r=>{if(!r.ok)process.exit(1);const body=await r.json();if(body?.ok!==true)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -143,7 +143,7 @@ services:
       GATEWAY_AUTH_RATE_LIMIT_PER_MINUTE: ${GATEWAY_AUTH_RATE_LIMIT_PER_MINUTE:-30}
       GATEWAY_UPSTREAM_TIMEOUT_MS: ${GATEWAY_UPSTREAM_TIMEOUT_MS:-30000}
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(async r=>{if(!r.ok)process.exit(1);const body=await r.json();if(body?.ok!==true)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 6s
       retries: 12
