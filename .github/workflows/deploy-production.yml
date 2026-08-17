@@ -8,6 +8,11 @@ on:
         required: true
         default: false
         type: boolean
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/production-deploy-request"
 
 permissions:
   contents: read
@@ -55,7 +60,7 @@ jobs:
           DEPLOY_PATH: ${{ secrets.PRODUCTION_DEPLOY_PATH }}
           REMOTE_ENV_FILE: ${{ secrets.PRODUCTION_ENV_FILE }}
           REMOTE_BACKUP_DIR: ${{ secrets.PRODUCTION_BACKUP_DIR }}
-          ALLOW_INITIAL_EMPTY_HOST: ${{ inputs.allow_initial_empty_host }}
+          ALLOW_INITIAL_EMPTY_HOST: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_initial_empty_host || false }}
         run: |
           set -euo pipefail
           test -n "$DEPLOY_HOST"
