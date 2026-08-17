@@ -88,6 +88,13 @@ jobs:
           email="eight-service-$(date +%s)@example.com"
           password="very-secure-eight-service-pass-123"
 
+          weak_status="$(curl -sS -o /tmp/weak-register.json -w '%{http_code}' \
+            -H 'Host: localhost' \
+            -H 'content-type: application/json' \
+            -d "{\"email\":\"weak-${email}\",\"password\":\"short\"}" \
+            http://127.0.0.1:3800/api/auth/register)"
+          test "$weak_status" = "400"
+
           register_status="$(curl -sS -o /tmp/register.json -w '%{http_code}' \
             -H 'Host: localhost' \
             -c /tmp/cookies.txt \
@@ -102,6 +109,35 @@ jobs:
             http://127.0.0.1:3800/api/auth/me)"
           test "$me_status" = "200"
           grep -q "$email" /tmp/me.json
+
+          logout_status="$(curl -sS -o /tmp/logout.json -w '%{http_code}' \
+            -X POST \
+            -H 'Host: localhost' \
+            -b /tmp/cookies.txt \
+            -c /tmp/cookies.txt \
+            http://127.0.0.1:3800/api/auth/logout)"
+          test "$logout_status" = "204"
+
+          after_logout_status="$(curl -sS -o /tmp/me-after-logout.json -w '%{http_code}' \
+            -H 'Host: localhost' \
+            -b /tmp/cookies.txt \
+            http://127.0.0.1:3800/api/auth/me)"
+          test "$after_logout_status" = "401"
+
+      - name: Verify Auth service route boundary
+        run: |
+          docker compose -f infra/docker-compose.production.yml exec -T auth-service node <<'NODE'
+          const health = await fetch('http://127.0.0.1:3001/health');
+          if (!health.ok) process.exit(1);
+          const healthBody = await health.json();
+          if (healthBody.ok !== true || healthBody.service !== 'auth-service') process.exit(1);
+
+          const outsideScope = await fetch('http://127.0.0.1:3001/v1/catalog/categories');
+          if (outsideScope.status !== 404) {
+            console.error('Auth service accepted catalog route', outsideScope.status);
+            process.exit(1);
+          }
+          NODE
 
       - name: Verify Redis-backed gateway auth rate limit
         run: |
