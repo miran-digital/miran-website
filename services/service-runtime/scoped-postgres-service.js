@@ -17,19 +17,43 @@ function matchesScope(pathname, exact, prefixes) {
   return exact.includes(pathname) || prefixes.some((prefix) => pathname.startsWith(prefix));
 }
 
+function validateDomains(domains) {
+  const names = new Set();
+  for (const domain of domains) {
+    if (!domain?.name) throw new Error("domain.name is required");
+    if (names.has(domain.name)) throw new Error(`Duplicate domain name: ${domain.name}`);
+    names.add(domain.name);
+  }
+}
+
+function resolveDomain(pathname, domains) {
+  const matches = domains.filter((domain) =>
+    matchesScope(pathname, domain.exactPaths || [], domain.prefixes || []),
+  );
+  if (matches.length > 1) {
+    throw new Error(
+      `Scoped service route overlap: ${pathname} matched ${matches.map(({ name }) => name).join(", ")}`,
+    );
+  }
+  return matches[0]?.name || null;
+}
+
 function proxyRequest(req, res, targetPort) {
   return new Promise((resolve) => {
+    const headers = {
+      ...req.headers,
+      host: `127.0.0.1:${targetPort}`,
+      "x-miran-scoped-service": req.miranServiceName || "unknown",
+    };
+    if (req.miranDomainName) headers["x-miran-domain"] = req.miranDomainName;
+
     const upstream = httpRequest(
       {
         hostname: "127.0.0.1",
         port: targetPort,
         method: req.method,
         path: req.url,
-        headers: {
-          ...req.headers,
-          host: `127.0.0.1:${targetPort}`,
-          "x-miran-scoped-service": req.miranServiceName || "unknown",
-        },
+        headers,
       },
       (upstreamRes) => {
         res.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers);
@@ -55,12 +79,14 @@ export async function startScopedPostgresService({
   serviceName,
   exactPaths = [],
   prefixes = [],
+  domains = [],
   runMaintenance = false,
   port = Number(process.env.PORT || 3001),
   host = process.env.HOST || "0.0.0.0",
   corePort = Number(process.env.SCOPED_CORE_PORT || 3901),
 } = {}) {
   if (!serviceName) throw new Error("serviceName is required");
+  validateDomains(domains);
 
   const core = await startPostgresServer({ port: corePort, host: "127.0.0.1" });
   let maintenance = null;
@@ -100,15 +126,18 @@ export async function startScopedPostgresService({
           service: serviceName,
           database: "postgresql",
           maintenance: runMaintenance ? "running" : "disabled",
-          boundary: "phase1-independent-runtime",
+          boundary: domains.length ? "phase2-domain-aware-runtime" : "phase1-independent-runtime",
+          domains: domains.map(({ name, extractionTarget }) => ({ name, extractionTarget })),
         });
       }
 
-      if (!matchesScope(url.pathname, exactPaths, prefixes)) {
+      const domain = domains.length ? resolveDomain(url.pathname, domains) : null;
+      if (!domain && !matchesScope(url.pathname, exactPaths, prefixes)) {
         return json(res, 404, { error: "NOT_FOUND", service: serviceName });
       }
 
       req.miranServiceName = serviceName;
+      req.miranDomainName = domain;
       await proxyRequest(req, res, corePort);
     } catch (error) {
       console.error(`${serviceName} request failed`, {
