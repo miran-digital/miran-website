@@ -1,0 +1,1 @@
+ALTER TABLE `products` ADD `archived_at` text DEFAULT '' NOT NULL;

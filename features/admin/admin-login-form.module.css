@@ -1,0 +1,7 @@
+.form { display: grid; gap: 1rem; margin-block-start: 1.25rem; }
+.form label { display: grid; gap: .45rem; color: #111827; font-size: .9rem; font-weight: 850; }
+.form input { min-height: 3.25rem; border: 1px solid #d1d5db; border-radius: .8rem; padding-inline: 1rem; background: #fff; color: #111827; font: inherit; }
+.form input:focus { border-color: var(--miran-color-brand); outline: 3px solid rgb(37 99 235 / .14); }
+.form button { min-height: 3.25rem; border: 0; border-radius: .8rem; background: var(--miran-color-brand); color: #fff; font: inherit; font-weight: 900; cursor: pointer; }
+.form button:disabled { cursor: wait; opacity: .7; }
+.form p { margin: 0; border-radius: .65rem; padding: .75rem; background: #fff1f2; color: #be123c; font-size: .85rem; font-weight: 800; }

@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX `payment_attempts_pending_order_unique` ON `payment_attempts` (`order_id`) WHERE status = 'pending';--> statement-breakpoint
+CREATE UNIQUE INDEX `payment_attempts_authority_unique` ON `payment_attempts` (`authority`) WHERE authority != '';

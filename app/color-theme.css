@@ -1,0 +1,97 @@
+.site-header {
+  border-block-end-color: #c7d2fe;
+  background: rgb(255 255 255 / 0.94);
+  box-shadow: 0 10px 32px rgb(79 70 229 / 0.08);
+  backdrop-filter: blur(18px);
+}
+
+.site-header__notice {
+  background: linear-gradient(90deg, #4f46e5, #7c3aed 52%, #0891b2);
+}
+
+.site-header__brand {
+  background: linear-gradient(135deg, #4f46e5, #7c3aed 52%, #0891b2);
+  background-clip: text;
+  color: transparent;
+}
+
+.header-search__form {
+  border-color: #c7d2fe;
+  background: linear-gradient(90deg, #f5f3ff, #ecfeff);
+}
+
+.header-search__submit {
+  background: transparent;
+}
+
+.mega-menu {
+  border-block-start-color: #e0e7ff;
+  background: linear-gradient(90deg, #ffffff, #fafaff);
+}
+
+.mega-menu__trigger {
+  color: #3730a3;
+}
+
+.mega-menu__panel {
+  border-color: #c7d2fe;
+  background: linear-gradient(145deg, #fff, #f5f3ff 55%, #ecfeff);
+  box-shadow: var(--miran-shadow-lg);
+}
+
+.mobile-nav {
+  border-block-start-color: #c7d2fe;
+  background: rgb(255 255 255 / 0.94);
+  box-shadow: 0 -12px 30px rgb(79 70 229 / 0.1);
+  backdrop-filter: blur(18px);
+}
+
+.mobile-nav a:nth-child(1) { color: #4f46e5; }
+.mobile-nav a:nth-child(2) { color: #0891b2; }
+.mobile-nav a:nth-child(3) { color: #db2777; }
+.mobile-nav a:nth-child(4) { color: #ea580c; }
+
+.miran-card {
+  border-color: #e0e7ff;
+  box-shadow: 0 14px 36px rgb(79 70 229 / 0.08);
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.miran-product-card:hover {
+  border-color: #a5b4fc;
+  box-shadow: 0 20px 46px rgb(79 70 229 / 0.16);
+}
+
+.miran-badge--brand {
+  background: linear-gradient(135deg, #7c3aed, #db2777);
+}
+
+.foundation-card {
+  border-color: #c7d2fe;
+  background: linear-gradient(145deg, #fff, #f8fafc);
+  box-shadow: var(--miran-shadow-md);
+}
+
+.managed-brand-image {
+  display: block;
+  width: auto;
+  max-width: 10rem;
+  height: 2.75rem;
+  object-fit: contain;
+}
+
+.miran-product-card__media > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem;
+  object-fit: contain;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .miran-card,
+  .miran-product-card {
+    transition: none;
+  }
+}

@@ -1,0 +1,129 @@
+.page {
+  min-height: 65vh;
+  padding-block: var(--miran-space-8) 6rem;
+  background: var(--miran-color-surface-muted);
+}
+
+.layout {
+  display: grid;
+  gap: var(--miran-space-6);
+  align-items: start;
+}
+
+.intro,
+.form {
+  border: 1px solid var(--miran-color-border);
+  border-radius: var(--miran-radius-lg);
+  padding: clamp(1.5rem, 5vw, 3rem);
+  background: var(--miran-color-surface);
+  box-shadow: var(--miran-shadow-sm);
+}
+
+.intro > p:first-child {
+  margin: 0;
+  color: var(--miran-color-brand);
+  font-size: var(--miran-font-size-sm);
+  font-weight: 900;
+}
+
+.intro h1 {
+  margin: var(--miran-space-2) 0 0;
+  font-size: clamp(2rem, 5vw, 3.5rem);
+}
+
+.intro > p:last-of-type,
+.intro ol,
+.form small {
+  color: var(--miran-color-text-muted);
+  line-height: var(--miran-line-height-relaxed);
+}
+
+.form {
+  display: grid;
+  gap: var(--miran-space-4);
+}
+
+.form h2 {
+  margin: 0;
+}
+
+.form label {
+  display: grid;
+  gap: var(--miran-space-1);
+  color: var(--miran-color-text-muted);
+  font-size: var(--miran-font-size-sm);
+  font-weight: 700;
+}
+
+.form input,
+.form select,
+.form textarea {
+  width: 100%;
+  min-height: 3rem;
+  border: 1px solid var(--miran-color-border);
+  border-radius: var(--miran-radius-md);
+  background: var(--miran-color-surface);
+  color: var(--miran-color-text);
+  padding: var(--miran-space-3);
+}
+
+.form textarea {
+  resize: vertical;
+}
+
+.twoColumns {
+  display: grid;
+  gap: var(--miran-space-4);
+}
+
+.form button {
+  min-height: 3.25rem;
+  border: 0;
+  border-radius: var(--miran-radius-md);
+  background: var(--miran-color-brand);
+  color: var(--miran-color-brand-contrast);
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.form button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.success {
+  margin: 0;
+  border-radius: var(--miran-radius-md);
+  padding: var(--miran-space-3);
+  background: #f0fdf4;
+  color: var(--miran-color-success);
+  font-weight: 800;
+}
+
+.error {
+  margin: 0;
+  border-radius: var(--miran-radius-md);
+  padding: var(--miran-space-3);
+  background: #fef2f2;
+  color: var(--miran-color-danger);
+  font-weight: 800;
+}
+
+@media (min-width: 48rem) {
+  .twoColumns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 64rem) {
+  .layout {
+    grid-template-columns: minmax(0, 0.85fr) minmax(25rem, 1.15fr);
+    gap: var(--miran-space-8);
+  }
+
+  .intro {
+    position: sticky;
+    top: 10rem;
+  }
+}

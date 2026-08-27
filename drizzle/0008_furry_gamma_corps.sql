@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `admin_audit_order_paid_unique` ON `admin_audit_log` (`action`,`subject_id`) WHERE action = 'order.paid';

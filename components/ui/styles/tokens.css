@@ -1,0 +1,60 @@
+:root {
+  --miran-color-brand: #4f46e5;
+  --miran-color-brand-contrast: #ffffff;
+  --miran-color-surface: #ffffff;
+  --miran-color-surface-muted: #f4f7ff;
+  --miran-color-text: #172033;
+  --miran-color-text-muted: #64748b;
+  --miran-color-border: #dfe7f3;
+  --miran-color-accent: #0891b2;
+  --miran-color-warm: #f97316;
+  --miran-color-danger: #b91c1c;
+  --miran-radius-sm: 0.5rem;
+  --miran-radius-md: 0.75rem;
+  --miran-radius-lg: 1rem;
+  --miran-shadow-sm: 0 5px 18px rgb(79 70 229 / 0.08);
+  --miran-shadow-lg: 0 24px 65px rgb(37 99 235 / 0.16);
+  --miran-space-1: 0.25rem;
+  --miran-space-2: 0.5rem;
+  --miran-space-3: 0.75rem;
+  --miran-space-4: 1rem;
+  --miran-space-6: 1.5rem;
+  --miran-space-8: 2rem;
+  --miran-space-12: 3rem;
+  --miran-container: 76rem;
+  --miran-container-wide: 90rem;
+}
+
+.miran-container {
+  width: min(100% - 2rem, var(--miran-container));
+  margin-inline: auto;
+}
+
+.miran-container--wide {
+  max-width: var(--miran-container-wide);
+}
+
+.miran-button {
+  min-height: 2.75rem;
+  padding-inline: 1rem;
+  border-radius: var(--miran-radius-md);
+  border: 1px solid transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.miran-button--primary {
+  background: linear-gradient(135deg, var(--miran-color-brand), #2563eb);
+  color: var(--miran-color-brand-contrast);
+}
+
+.miran-button--secondary {
+  background: var(--miran-color-surface);
+  color: var(--miran-color-text);
+  border-color: var(--miran-color-border);
+}
+
+.miran-button--ghost {
+  background: transparent;
+  color: var(--miran-color-text);
+}

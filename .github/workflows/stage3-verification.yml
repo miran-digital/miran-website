@@ -1,0 +1,46 @@
+name: Stage 3 Verification
+
+on:
+  push:
+    branches:
+      - verify/stage3-8534226
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stage3-verification-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Fresh install and release gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Fresh install from lockfile
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
+
+      - name: Tests
+        run: npm test

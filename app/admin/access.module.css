@@ -1,0 +1,53 @@
+.page {
+  display: grid;
+  min-height: 65vh;
+  place-items: center;
+  padding: 3rem 1rem 6rem;
+  background: linear-gradient(135deg, #eef2ff, #ecfeff 55%, #fff7ed);
+}
+
+.card {
+  width: min(100%, 34rem);
+  border: 1px solid var(--miran-color-border);
+  border-radius: 1.5rem;
+  padding: clamp(1.5rem, 5vw, 3rem);
+  background: #fff;
+  box-shadow: var(--miran-shadow-lg);
+}
+
+.card span {
+  color: var(--miran-color-brand);
+  font-weight: 900;
+}
+
+.card h1 {
+  margin: 0.5rem 0;
+  font-size: clamp(1.8rem, 5vw, 2.6rem);
+}
+
+.card p,
+.card small {
+  color: var(--miran-color-text-muted);
+}
+
+.card small {
+  display: block;
+  margin-block: 1rem;
+}
+
+.card a {
+  display: inline-flex;
+  min-height: 3rem;
+  align-items: center;
+  border-radius: var(--miran-radius-full);
+  padding-inline: 1.25rem;
+  background: var(--miran-color-brand);
+  color: #fff;
+  font-weight: 800;
+}
+
+.card a + a {
+  margin-inline-start: 0.75rem;
+  background: var(--miran-color-surface-muted);
+  color: var(--miran-color-text);
+}

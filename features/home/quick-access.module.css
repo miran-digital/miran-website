@@ -1,0 +1,62 @@
+.section {
+  padding-block: var(--miran-space-4) var(--miran-space-2);
+  background: #fff;
+}
+
+.rail {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(5.6rem, 1fr);
+  gap: var(--miran-space-4);
+  overflow-x: auto;
+  padding: var(--miran-space-2) 0 var(--miran-space-3);
+  scroll-snap-type: inline proximity;
+}
+
+.rail a {
+  display: grid;
+  justify-items: center;
+  gap: var(--miran-space-2);
+  min-width: 0;
+  scroll-snap-align: start;
+  text-align: center;
+}
+
+.rail span {
+  display: grid;
+  width: 3.6rem;
+  height: 3.6rem;
+  place-items: center;
+  border-radius: 50%;
+  background: #eef2f7;
+  color: #334155;
+  font-size: 1.35rem;
+  font-weight: 950;
+  transition: transform 160ms ease;
+}
+
+.rail a:hover span,
+.rail a:focus-visible span {
+  transform: translateY(-3px);
+}
+
+.rail span[data-tone="red"] { background: #ef3340; color: #fff; }
+.rail span[data-tone="orange"] { background: #f97316; color: #fff; }
+.rail span[data-tone="blue"] { background: #1d4ed8; color: #fff; }
+.rail span[data-tone="cyan"] { background: #0891b2; color: #fff; }
+.rail span[data-tone="violet"] { background: #7c3aed; color: #fff; }
+.rail span[data-tone="pink"] { background: #db2777; color: #fff; }
+.rail span[data-tone="green"] { background: #059669; color: #fff; }
+.rail span[data-tone="gray"] { background: #e5e7eb; color: #475569; }
+
+.rail b {
+  max-width: 7.5rem;
+  font-size: 0.73rem;
+  line-height: 1.7;
+}
+
+@media (min-width: 64rem) {
+  .rail {
+    overflow: visible;
+  }
+}

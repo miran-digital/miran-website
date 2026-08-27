@@ -1,0 +1,22 @@
+.panel { display: grid; gap: var(--miran-space-4); margin-block-end: var(--miran-space-8); }
+.panel > header { display: flex; justify-content: space-between; gap: var(--miran-space-4); align-items: center; }
+.panel h1, .panel header p, .notice p, .message { margin: 0; }
+.panel header p { color: var(--miran-color-brand); font-size: var(--miran-font-size-xs); font-weight: 900; }
+.panel header > strong { border-radius: 999px; padding: .45rem .8rem; background: var(--miran-color-surface-muted); }
+.notice, .message { border: 1px solid #fde68a; border-radius: var(--miran-radius-md); padding: var(--miran-space-3); background: #fffbeb; color: #92400e; }
+.notice { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--miran-space-3); align-items: center; }
+.notice a { border-radius: var(--miran-radius-sm); padding: .6rem .85rem; background: #92400e; color: #fff; font-weight: 800; }
+.list { display: grid; gap: var(--miran-space-3); }
+.list article { display: grid; gap: var(--miran-space-3); border: 1px solid var(--miran-color-border); border-radius: var(--miran-radius-lg); padding: var(--miran-space-4); background: var(--miran-color-surface); box-shadow: var(--miran-shadow-sm); }
+.identity { display: grid; gap: .3rem; }
+.identity span, .identity small, .list article > small { color: var(--miran-color-text-muted); overflow-wrap: anywhere; }
+.list dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--miran-space-2); margin: 0; }
+.list dl > div { border-radius: var(--miran-radius-sm); padding: var(--miran-space-2); background: var(--miran-color-surface-muted); }
+.list dt { color: var(--miran-color-text-muted); font-size: var(--miran-font-size-xs); }
+.list dd { margin: .2rem 0 0; font-weight: 900; }
+.actions { display: flex; flex-wrap: wrap; gap: var(--miran-space-2); }
+.actions button { min-height: 2.75rem; border: 0; border-radius: var(--miran-radius-md); padding-inline: var(--miran-space-4); background: #9f2f27; color: #fff; font: inherit; font-weight: 900; cursor: pointer; }
+.actions button:disabled { cursor: not-allowed; opacity: .5; }
+.blocker { color: #9f2f27 !important; font-weight: 800; }
+@media (min-width: 48rem) { .list { grid-template-columns: repeat(2, minmax(0, 1fr)); } .list dl { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 40rem) { .panel > header, .notice { align-items: stretch; flex-direction: column; } }

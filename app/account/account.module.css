@@ -1,0 +1,653 @@
+.page {
+  min-height: 65vh;
+  padding-block: var(--miran-space-8) 6rem;
+  background: var(--miran-color-surface-muted);
+}
+
+.loginViewport {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 2rem 1rem;
+}
+
+.loginCard {
+  width: min(100%, 25rem);
+  border: 1px solid var(--miran-color-border);
+  border-radius: 0.75rem;
+  padding: 2rem;
+  background: var(--miran-color-surface);
+}
+
+.loginHeader {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  min-height: 3rem;
+  margin-block-end: 2.5rem;
+}
+
+.loginBack {
+  justify-self: start;
+  font-size: 1.7rem;
+  line-height: 1;
+}
+
+.loginBrand {
+  grid-column: 2;
+  color: var(--miran-color-brand);
+  font-size: 1.65rem;
+  font-weight: 950;
+}
+
+.loginBrand :global(.managed-brand-image) {
+  width: auto;
+  max-width: 9rem;
+  max-height: 2.75rem;
+}
+
+.loginCard h1,
+.loginCard > p {
+  margin: 0;
+}
+
+.loginCard h1 {
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+
+.loginCard > p {
+  margin-block-start: 1.25rem;
+  color: var(--miran-color-text-muted);
+  font-size: 0.86rem;
+}
+
+.layout {
+  display: grid;
+  gap: var(--miran-space-6);
+  align-items: center;
+}
+
+.intro,
+.auth {
+  border: 1px solid var(--miran-color-border);
+  border-radius: var(--miran-radius-lg);
+  padding: clamp(1.5rem, 5vw, 3rem);
+  background: var(--miran-color-surface);
+  box-shadow: var(--miran-shadow-sm);
+}
+
+.intro > p:first-child {
+  margin: 0;
+  color: var(--miran-color-brand);
+  font-size: var(--miran-font-size-sm);
+  font-weight: 900;
+}
+
+.intro h1 {
+  margin: var(--miran-space-2) 0 0;
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  line-height: var(--miran-line-height-tight);
+}
+
+.intro > p:last-of-type,
+.intro ul,
+.auth > p,
+.auth small {
+  color: var(--miran-color-text-muted);
+}
+
+.intro ul {
+  display: grid;
+  gap: var(--miran-space-2);
+  margin-block-end: 0;
+}
+
+.auth {
+  display: grid;
+  gap: var(--miran-space-4);
+}
+
+.auth h2,
+.auth p {
+  margin: 0;
+}
+
+.auth label {
+  display: grid;
+  gap: var(--miran-space-1);
+  color: var(--miran-color-text-muted);
+  font-size: var(--miran-font-size-sm);
+  font-weight: 700;
+}
+
+.auth input {
+  min-height: 3rem;
+  border: 1px solid var(--miran-color-border);
+  border-radius: var(--miran-radius-md);
+  padding-inline: var(--miran-space-3);
+}
+
+.authButton {
+  display: grid;
+  min-height: 3.25rem;
+  place-items: center;
+  border-radius: var(--miran-radius-md);
+  background: var(--miran-color-brand);
+  color: var(--miran-color-brand-contrast);
+  font-weight: 900;
+}
+
+.auth button {
+  min-height: 3.25rem;
+  border: 0;
+  border-radius: var(--miran-radius-md);
+  background: var(--miran-color-surface-muted);
+  color: var(--miran-color-text-muted);
+  font: inherit;
+  font-weight: 900;
+  cursor: not-allowed;
+}
+
+.addressSection,
+.orderSection,
+.notificationSection,
+.supportSection {
+  display: grid;
+  gap: var(--miran-space-4);
+  margin-block-start: var(--miran-space-6);
+  border: 1px solid var(--miran-color-border);
+  border-radius: var(--miran-radius-lg);
+  padding: clamp(1.25rem, 4vw, 2rem);
+  background: var(--miran-color-surface);
+}
+
+.orderList {
+  display: grid;
+  gap: var(--miran-space-4);
+}
+
+.orderCard {
+  display: grid;
+  gap: var(--miran-space-4);
+  border: 1px solid var(--miran-color-border);
+  border-radius: var(--miran-radius-md);
+  padding: var(--miran-space-4);
+}
+
+.orderHeader,
+.orderBadges,
+.orderItems li,
+.emptyOrders {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--miran-space-3);
+  align-items: center;
+}
+
+.orderHeader > div:first-child,
+.orderAddress,
+.orderItems li > div,
+.orderMeta dd {
+  display: grid;
+  gap: var(--miran-space-1);
+}
+
+.orderHeader span,
+.orderMeta dt,
+.orderItems small,
+.orderAddress span {
+  color: var(--miran-color-text-muted);
+  font-size: var(--miran-font-size-sm);
+}
+
+.orderBadges {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.orderBadges span {
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  background: var(--miran-color-surface-muted);
+  color: var(--miran-color-brand);
+  font-weight: 800;
+}
+
+.orderMeta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--miran-space-3);
+  margin: 0;
+}
+
+.orderMeta > div {
+  border-radius: var(--miran-radius-sm);
+  padding: var(--miran-space-3);
+  background: var(--miran-color-surface-muted);
+}
+
+.orderMeta dd,
+.orderMeta dt {
+  margin: 0;
+}
+
+.orderMeta small {
+  color: var(--miran-color-text-muted);
+}
+
+.legacyMoney {
+  color: var(--miran-color-danger, #a2342d);
+  font-size: var(--miran-font-size-sm);
+}
+
+.receiptStatus {
+  display: grid;
+  gap: var(--miran-space-1);
+  border-inline-start: 4px solid #d97706;
+  border-radius: var(--miran-radius-sm);
+  padding: var(--miran-space-3);
+  background: #fffbeb;
+}
+
+.receiptStatus[data-status="approved"] {
+  border-color: #15803d;
+  background: #ecfdf5;
+}
+
+.receiptStatus[data-status="rejected"] {
+  border-color: #b91c1c;
+  background: #fef2f2;
+}
+
+.receiptStatus span,
+.receiptStatus small {
+  color: var(--miran-color-text-muted);
+}
+
+.orderItems {
+  display: grid;
+  gap: var(--miran-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.orderItems li {
+  border-block-start: 1px solid var(--miran-color-border);
+  padding-block-start: var(--miran-space-3);
+}
+
+.orderItems a,
+.emptyOrders a {
+  color: var(--miran-color-brand);
+  font-weight: 800;
+}
+
+.orderAddress {
+  border-block-start: 1px solid var(--miran-color-border);
+  padding-block-start: var(--miran-space-3);
+}
+
+.emptyOrders {
+  border: 1px dashed var(--miran-color-border);
+  border-radius: var(--miran-radius-md);
+  padding: var(--miran-space-5);
+}
+
+.sectionHeading,
+.formFooter,
+.addressActions {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--miran-space-3);
+  align-items: center;
+}
+
+.sectionHeading p,
+.sectionHeading h2,
+.addressForm h3,
+.addressList p {
+  margin: 0;
+}
+
+.sectionHeading p {
+  color: var(--miran-color-brand);
+  font-size: var(--miran-font-size-xs);
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.sectionHeading button,
+.addressActions button,
+.addressForm button {
+  min-height: 2.75rem;
+  border: 1px solid var(--miran-color-brand);
+  border-radius: var(--miran-radius-md);
+  padding-inline: var(--miran-space-3);
+  background: var(--miran-color-surface);
+  color: var(--miran-color-brand);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.addressForm button {
+  background: var(--miran-color-brand);
+  color: var(--miran-color-brand-contrast);
+}
+
+.privacyNote,
+.status {
+  margin: 0;
+  color: var(--miran-color-text-muted);
+  font-size: var(--miran-font-size-sm);
+}
+
+.addressList {
+  display: grid;
+  gap: var(--miran-space-3);
+}
+
+.addressList article {
+  display: grid;
+  gap: var(--miran-space-3);
+  border: 1px solid var(--miran-color-border);
+  border-radius: var(--miran-radius-md);
+  padding: var(--miran-space-4);
+}
+
+.addressList article > div:first-child {
+  display: grid;
+  gap: var(--miran-space-1);
+}
+
+.addressList small {
+  color: var(--miran-color-text-muted);
+}
+
+.addressForm {
+  display: grid;
+  gap: var(--miran-space-3);
+  border-block-start: 1px solid var(--miran-color-border);
+  padding-block-start: var(--miran-space-5);
+}
+
+.addressForm label {
+  display: grid;
+  gap: var(--miran-space-1);
+  color: var(--miran-color-text-muted);
+  font-size: var(--miran-font-size-sm);
+  font-weight: 700;
+}
+
+.addressForm input,
+.addressForm textarea {
+  width: 100%;
+  min-height: 3rem;
+  border: 1px solid var(--miran-color-border);
+  border-radius: var(--miran-radius-md);
+  padding: var(--miran-space-2) var(--miran-space-3);
+  background: var(--miran-color-surface);
+  color: var(--miran-color-text);
+  font: inherit;
+}
+
+.addressForm textarea {
+  resize: vertical;
+}
+
+.addressForm input[aria-invalid="true"],
+.addressForm textarea[aria-invalid="true"] {
+  border-color: var(--miran-color-danger, #b91c1c);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--miran-color-danger, #b91c1c) 12%, transparent);
+}
+
+.fieldError {
+  color: var(--miran-color-danger, #b91c1c);
+  font-size: var(--miran-font-size-xs);
+  font-weight: 800;
+  text-align: start;
+}
+
+.headingActions,
+.notificationActions,
+.ticketDetail header {
+  display: flex;
+  align-items: center;
+  gap: var(--miran-space-3);
+}
+
+.headingActions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.headingActions button,
+.notificationActions button,
+.supportForm button,
+.replyForm button {
+  min-height: 2.75rem;
+  border: 1px solid var(--miran-color-brand);
+  border-radius: var(--miran-radius-md);
+  padding-inline: var(--miran-space-3);
+  background: var(--miran-color-brand);
+  color: var(--miran-color-brand-contrast);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.notificationList,
+.messageList {
+  display: grid;
+  gap: var(--miran-space-3);
+}
+
+.notificationList article {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--miran-space-4);
+  border: 1px solid var(--miran-color-border);
+  border-radius: var(--miran-radius-md);
+  padding: var(--miran-space-4);
+}
+
+.notificationList article[data-unread="true"] {
+  border-inline-start: 4px solid var(--miran-color-brand);
+  background: color-mix(in srgb, var(--miran-color-brand) 5%, white);
+}
+
+.notificationList p,
+.notificationList small,
+.emptyNotice,
+.ticketDetail > p,
+.messageList small {
+  color: var(--miran-color-text-muted);
+}
+
+.notificationActions {
+  flex-shrink: 0;
+}
+
+.notificationActions a {
+  color: var(--miran-color-brand);
+  font-weight: 800;
+}
+
+.supportForm,
+.replyForm {
+  display: grid;
+  gap: var(--miran-space-3);
+  border: 1px solid var(--miran-color-border);
+  border-radius: var(--miran-radius-md);
+  padding: var(--miran-space-4);
+  background: var(--miran-color-surface-muted);
+}
+
+.supportForm label,
+.replyForm label {
+  display: grid;
+  gap: var(--miran-space-1);
+  color: var(--miran-color-text-muted);
+  font-size: var(--miran-font-size-sm);
+  font-weight: 700;
+}
+
+.supportForm input,
+.supportForm select,
+.supportForm textarea,
+.replyForm textarea {
+  width: 100%;
+  min-height: 3rem;
+  border: 1px solid var(--miran-color-border);
+  border-radius: var(--miran-radius-md);
+  padding: var(--miran-space-2) var(--miran-space-3);
+  background: var(--miran-color-surface);
+  color: var(--miran-color-text);
+  font: inherit;
+}
+
+.supportForm textarea,
+.replyForm textarea {
+  resize: vertical;
+}
+
+.supportWorkspace {
+  display: grid;
+  gap: var(--miran-space-4);
+}
+
+.ticketList {
+  display: grid;
+  gap: var(--miran-space-2);
+  align-content: start;
+}
+
+.ticketList button {
+  display: grid;
+  gap: var(--miran-space-1);
+  border: 1px solid var(--miran-color-border);
+  border-radius: var(--miran-radius-md);
+  padding: var(--miran-space-3);
+  background: var(--miran-color-surface);
+  color: inherit;
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ticketList button[data-active="true"] {
+  border-color: var(--miran-color-brand);
+  background: var(--miran-color-surface-muted);
+}
+
+.ticketList span,
+.ticketDetail small {
+  color: var(--miran-color-text-muted);
+  font-size: var(--miran-font-size-sm);
+}
+
+.ticketDetail {
+  min-width: 0;
+  border: 1px solid var(--miran-color-border);
+  border-radius: var(--miran-radius-md);
+  padding: var(--miran-space-4);
+}
+
+.ticketDetail header {
+  justify-content: space-between;
+}
+
+.ticketDetail h3,
+.messageList p {
+  margin: 0;
+}
+
+.messageList > div {
+  max-width: 85%;
+  border-radius: var(--miran-radius-md);
+  padding: var(--miran-space-3);
+  background: var(--miran-color-surface-muted);
+}
+
+.messageList > div[data-author="customer"] {
+  margin-inline-start: auto;
+  background: color-mix(in srgb, var(--miran-color-brand) 10%, white);
+}
+
+.replyForm {
+  margin-block-start: var(--miran-space-4);
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.closedNote {
+  margin-block-start: var(--miran-space-4);
+  border-radius: var(--miran-radius-sm);
+  padding: var(--miran-space-3);
+  background: var(--miran-color-surface-muted);
+}
+
+.addressForm .checkbox {
+  display: flex;
+  align-items: center;
+}
+
+.addressForm .checkbox input {
+  width: auto;
+  min-height: auto;
+}
+
+@media (min-width: 64rem) {
+  .layout {
+    grid-template-columns: minmax(0, 1.2fr) minmax(20rem, 0.8fr);
+    gap: var(--miran-space-8);
+  }
+
+  .addressList article {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .addressForm {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .supportForm {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .supportWorkspace {
+    grid-template-columns: minmax(15rem, 0.65fr) minmax(0, 1.35fr);
+  }
+
+  .addressForm h3,
+  .addressForm .fullWidth,
+  .addressForm .checkbox,
+  .formFooter,
+  .supportForm .fullWidth {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 40rem) {
+  .sectionHeading,
+  .orderHeader,
+  .emptyOrders {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .notificationList article,
+  .ticketDetail header,
+  .headingActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .orderBadges {
+    justify-content: flex-start;
+  }
+}

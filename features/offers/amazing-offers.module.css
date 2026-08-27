@@ -1,0 +1,229 @@
+.section {
+  padding-block: var(--miran-space-5);
+}
+
+.offerShell {
+  display: grid;
+  grid-template-columns: 8.75rem minmax(0, 1fr);
+  gap: var(--miran-space-3);
+  overflow: hidden;
+  border-radius: 1.25rem;
+  padding: var(--miran-space-4);
+  background-image:
+    radial-gradient(circle at 8% 18%, rgb(255 255 255 / 0.22), transparent 12rem),
+    linear-gradient(135deg, rgb(190 24 93 / 0.18), transparent 48%);
+}
+
+.intro {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--miran-space-2);
+  text-align: center;
+}
+
+.intro h2,
+.intro p {
+  margin: 0;
+}
+
+.intro h2 {
+  font-size: clamp(1.15rem, 2vw, 1.65rem);
+  line-height: 1.35;
+}
+
+.intro p {
+  font-size: var(--miran-font-size-xs);
+  opacity: 0.9;
+}
+
+.intro > a {
+  margin-block-start: var(--miran-space-2);
+  border-radius: var(--miran-radius-full);
+  padding: 0.52rem 0.8rem;
+  background: #fff;
+  color: #111827;
+  font-size: var(--miran-font-size-xs);
+  font-weight: 900;
+}
+
+.intro :global(.miran-offer-countdown) {
+  background: #fff;
+  color: #be123c;
+}
+
+.percentMark {
+  display: grid;
+  width: 4.5rem;
+  height: 4.5rem;
+  place-items: center;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.14);
+  font-size: 3.5rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.rail {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(12.5rem, 68vw);
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  padding-block-end: var(--miran-space-2);
+  overscroll-behavior-inline: contain;
+  scroll-snap-type: inline proximity;
+  scrollbar-color: rgb(255 255 255 / 0.7) transparent;
+}
+
+.productCard {
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+  scroll-snap-align: start;
+  border-radius: 0.85rem;
+  background: #fff;
+  color: #111827;
+}
+
+.productCard:first-child {
+  border-start-start-radius: 0.85rem;
+  border-end-start-radius: 0.85rem;
+}
+
+.productCard:last-child {
+  border-start-end-radius: 0.85rem;
+  border-end-end-radius: 0.85rem;
+}
+
+.productCard > a {
+  display: flex;
+  width: 100%;
+  min-height: 22rem;
+  box-sizing: border-box;
+  flex-direction: column;
+  gap: 0.48rem;
+  padding: var(--miran-space-3) var(--miran-space-3) var(--miran-space-4);
+}
+
+.amazingLabel {
+  display: none;
+}
+
+.productMedia {
+  display: grid;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  place-items: center;
+  overflow: hidden;
+  border-radius: var(--miran-radius-md);
+  background: linear-gradient(135deg, #f8fafc, #eef2ff);
+  color: #64748b;
+}
+
+.productMedia img {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0.4rem;
+  object-fit: contain;
+}
+
+.productMedia b {
+  font-size: var(--miran-font-size-lg);
+  letter-spacing: 0.08em;
+}
+
+.eyebrow,
+.outOfStock {
+  color: #64748b;
+  font-size: 0.72rem;
+}
+
+.outOfStock {
+  color: #b91c1c;
+  font-weight: 800;
+}
+
+.productCard h3 {
+  display: -webkit-box;
+  min-height: 3rem;
+  margin: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 0.88rem;
+  line-height: 1.9;
+}
+
+.priceRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--miran-space-2);
+  margin-block-start: auto;
+}
+
+.priceRow strong {
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.discount {
+  border-radius: var(--miran-radius-full);
+  padding: 0.15rem 0.45rem;
+  background: #ef3340;
+  color: #fff;
+  font-size: 0.72rem;
+}
+
+.productCard del {
+  align-self: end;
+  color: #9ca3af;
+  font-size: 0.72rem;
+}
+
+.rialReference {
+  align-self: end;
+  color: #64748b;
+  font-size: 0.7rem;
+}
+
+.productCard :global(.miran-offer-countdown) {
+  align-self: end;
+  padding: 0;
+  background: transparent;
+  color: #e11d48;
+  font-size: 0.72rem;
+}
+
+@media (min-width: 48rem) {
+  .offerShell {
+    grid-template-columns: 12.5rem minmax(0, 1fr);
+    padding: var(--miran-space-5);
+  }
+
+  .rail {
+    grid-auto-columns: minmax(13rem, calc((100% - 10px) / 5));
+  }
+}
+
+@media (max-width: 39.99rem) {
+  .section :global(.miran-container) {
+    padding-inline: 0;
+  }
+
+  .offerShell {
+    border-radius: 0;
+    padding-inline: var(--miran-space-3);
+  }
+
+  .intro p,
+  .intro :global(.miran-offer-countdown) {
+    display: none;
+  }
+}

@@ -1,0 +1,132 @@
+.banners {
+  padding-block: var(--miran-space-4) var(--miran-space-6);
+  background: #fff;
+}
+
+.bannerGrid {
+  display: grid;
+  gap: var(--miran-space-4);
+}
+
+.heroCarousel {
+  position: relative;
+  aspect-ratio: 3 / 1;
+  overflow: hidden;
+  border-radius: 1.35rem;
+  background: #071b4b;
+  box-shadow: var(--miran-shadow-md);
+}
+
+.heroSlide {
+  position: absolute;
+  inset: 0;
+  display: block;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.55s ease;
+}
+
+.heroSlide[data-active="true"] {
+  z-index: 1;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.heroSlide picture,
+.heroSlide img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.heroSlide img { object-fit: cover; }
+
+.defaultHeroCopy {
+  position: absolute;
+  z-index: 2;
+  inset-block: 0;
+  inset-inline-start: 0;
+  display: flex;
+  width: 46%;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: clamp(1.2rem, 4vw, 4rem);
+  color: #fff;
+  text-shadow: 0 2px 22px rgb(0 0 0 / 0.4);
+}
+
+.defaultHeroCopy small { color: #67e8f9; font-weight: 900; }
+.defaultHeroCopy strong { max-width: 14ch; font-size: clamp(1.25rem, 3vw, 3.2rem); line-height: 1.15; }
+.defaultHeroCopy em { max-width: 44ch; font-size: clamp(0.72rem, 1.25vw, 1rem); font-style: normal; opacity: 0.88; }
+.defaultHeroCopy b { margin-block-start: 0.5rem; border-radius: 999px; padding: 0.7rem 1.2rem; background: #fff; color: #172554; }
+
+.previousSlide,
+.nextSlide {
+  position: absolute;
+  z-index: 3;
+  inset-block-end: 1rem;
+  display: grid;
+  width: 2.65rem;
+  height: 2.65rem;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.94);
+  color: #111827;
+  font-size: 1.9rem;
+  cursor: pointer;
+  box-shadow: var(--miran-shadow-sm);
+}
+
+.previousSlide { inset-inline-end: 1rem; }
+.nextSlide { inset-inline-end: 4.1rem; }
+
+.slideDots {
+  position: absolute;
+  z-index: 3;
+  inset-inline-start: 1rem;
+  inset-block-end: 1.1rem;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.slideDots button {
+  width: 0.55rem;
+  height: 0.55rem;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  background: rgb(255 255 255 / 0.55);
+  cursor: pointer;
+  transition: width 0.2s ease, background 0.2s ease;
+}
+
+.slideDots button[data-active="true"] { width: 1.5rem; background: #fff; }
+
+.compactBannerGrid { display: grid; gap: var(--miran-space-4); }
+.compactBannerGrid a { overflow: hidden; border-radius: 1.25rem; background: var(--miran-color-surface-muted); box-shadow: var(--miran-shadow-sm); }
+.compactBannerGrid picture,
+.compactBannerGrid img { display: block; width: 100%; }
+.compactBannerGrid img { aspect-ratio: 2.35 / 1; object-fit: cover; }
+
+@media (max-width: 40rem) {
+  .heroCarousel { aspect-ratio: 1.45 / 1; border-radius: 1rem; }
+  .defaultHeroCopy { width: 54%; padding: 1rem; }
+  .defaultHeroCopy em { display: none; }
+  .defaultHeroCopy b { padding: 0.55rem 0.8rem; font-size: 0.75rem; }
+  .previousSlide,
+  .nextSlide { width: 2.2rem; height: 2.2rem; inset-block-end: 0.65rem; }
+  .previousSlide { inset-inline-end: 0.65rem; }
+  .nextSlide { inset-inline-end: 3.2rem; }
+  .slideDots { inset-inline-start: 0.75rem; inset-block-end: 0.85rem; }
+}
+
+@media (min-width: 48rem) {
+  .compactBannerGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heroSlide { transition: none; }
+}

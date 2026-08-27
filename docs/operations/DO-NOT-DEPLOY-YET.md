@@ -1,1 +1,0 @@
-Miran Shop is in the GitHub-first validation phase. Production deployment must not be triggered until the eight-service stack, integration, security, data-safety, RTL/mobile, admin/seller/storefront flows, and deployment tooling are signed off and a VPS is selected.

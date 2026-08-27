@@ -1,0 +1,125 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1786588940200,
+      "tag": "0000_breezy_bastion",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1786601693052,
+      "tag": "0001_big_masked_marvel",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786606633796,
+      "tag": "0002_previous_alice",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1786658305336,
+      "tag": "0003_organic_amazoness",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1786741174784,
+      "tag": "0004_foamy_violations",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1786813207677,
+      "tag": "0005_cool_gambit",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1787346361219,
+      "tag": "0006_furry_skreet",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1787350306788,
+      "tag": "0007_slim_karen_page",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1787350691153,
+      "tag": "0008_furry_gamma_corps",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1787365037355,
+      "tag": "0009_square_magneto",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1787370892026,
+      "tag": "0010_parched_eddie_brock",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1787373235710,
+      "tag": "0011_lucky_vapor",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1787519781976,
+      "tag": "0012_dark_blade",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1787577865817,
+      "tag": "0013_steep_clint_barton",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1787580493334,
+      "tag": "0014_brave_ronan",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1787587432735,
+      "tag": "0015_silent_kingpin",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1787695118130,
+      "tag": "0016_famous_red_skull",
+      "breakpoints": true
+    }
+  ]
+}

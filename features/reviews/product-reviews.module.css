@@ -1,0 +1,149 @@
+.section {
+  display: grid;
+  gap: var(--miran-space-5);
+  margin-block: var(--miran-space-8);
+  border: 1px solid var(--miran-color-border);
+  border-radius: var(--miran-radius-lg);
+  padding: clamp(1.25rem, 4vw, 2rem);
+  background: var(--miran-color-surface);
+}
+
+.heading,
+.summary,
+.reviewList article header {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--miran-space-3);
+  align-items: center;
+}
+
+.heading p,
+.heading h2,
+.reviewList h3,
+.reviewList p,
+.formCard h3,
+.formCard p {
+  margin: 0;
+}
+
+.heading > div:first-child p {
+  color: var(--miran-color-brand);
+  font-size: var(--miran-font-size-xs);
+  font-weight: 900;
+}
+
+.summary {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.summary strong {
+  font-size: 2rem;
+}
+
+.summary span,
+.reviewList article header span {
+  color: #f59e0b;
+  letter-spacing: 0.1em;
+}
+
+.summary small,
+.reviewList small,
+.formCard p,
+.empty {
+  color: var(--miran-color-text-muted);
+}
+
+.layout {
+  display: grid;
+  gap: var(--miran-space-5);
+}
+
+.reviewList {
+  display: grid;
+  gap: var(--miran-space-3);
+}
+
+.reviewList article,
+.formCard {
+  display: grid;
+  gap: var(--miran-space-3);
+  border: 1px solid var(--miran-color-border);
+  border-radius: var(--miran-radius-md);
+  padding: var(--miran-space-4);
+}
+
+.formCard {
+  align-content: start;
+  background: var(--miran-color-surface-muted);
+}
+
+.formCard form,
+.formCard label {
+  display: grid;
+  gap: var(--miran-space-2);
+}
+
+.formCard label {
+  color: var(--miran-color-text-muted);
+  font-size: var(--miran-font-size-sm);
+  font-weight: 700;
+}
+
+.formCard input,
+.formCard select,
+.formCard textarea {
+  width: 100%;
+  min-height: 3rem;
+  border: 1px solid var(--miran-color-border);
+  border-radius: var(--miran-radius-md);
+  padding: var(--miran-space-2) var(--miran-space-3);
+  background: var(--miran-color-surface);
+  color: var(--miran-color-text);
+  font: inherit;
+}
+
+.formCard textarea {
+  resize: vertical;
+}
+
+.formCard button,
+.formCard a {
+  display: grid;
+  min-height: 3rem;
+  place-items: center;
+  border: 0;
+  border-radius: var(--miran-radius-md);
+  padding-inline: var(--miran-space-3);
+  background: var(--miran-color-brand);
+  color: var(--miran-color-brand-contrast);
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.rejected,
+.status,
+.reviewState {
+  border-radius: var(--miran-radius-sm);
+  padding: var(--miran-space-3);
+  background: #fff7ed;
+}
+
+@media (min-width: 64rem) {
+  .layout {
+    grid-template-columns: minmax(0, 1.4fr) minmax(19rem, 0.6fr);
+  }
+}
+
+@media (max-width: 40rem) {
+  .heading,
+  .reviewList article header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .summary {
+    justify-content: flex-start;
+  }
+}
