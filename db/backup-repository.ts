@@ -188,14 +188,26 @@ async function assertDatabaseTableCoverage(database: D1Database) {
     .prepare(
       `SELECT name FROM sqlite_schema
         WHERE type = 'table'
-          AND name NOT LIKE 'sqlite_%'
-          AND name NOT IN ('d1_migrations', '__drizzle_migrations')
         ORDER BY name`,
     )
     .all<{ name: string }>();
-  const actual = result.results.map((row) => row.name);
+  assertBackupTableInventory(result.results.map((row) => row.name));
+}
+
+export function assertBackupTableInventory(tableNames: readonly string[]) {
+  const actual = tableNames
+    .filter((table) => !isInternalDatabaseTable(table))
+    .sort();
   const expected = [...LOGICAL_BACKUP_TABLES].sort();
   if (!sameStrings(actual, expected)) throw new Error("BACKUP_DATABASE_SCHEMA_MISMATCH");
+}
+
+function isInternalDatabaseTable(tableName: string) {
+  const normalizedName = tableName.toLowerCase();
+  return normalizedName.startsWith("sqlite_") ||
+    normalizedName.startsWith("_cf_") ||
+    normalizedName.startsWith("d1_") ||
+    normalizedName === "__drizzle_migrations";
 }
 
 async function readTableColumns(database: D1Database, table: BackupTable) {

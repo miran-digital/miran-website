@@ -1951,6 +1951,12 @@ export function AdminPage({
                     <h2>پشتیبان‌گیری و بازگردانی</h2>
                     <p>پیش از هر ذخیره، یک نسخهٔ قابل بازگردانی نگهداری می‌شود. حداکثر ۵۰ نسخهٔ اخیر حفظ می‌شود.</p>
                     <a className={styles.previewProductButton} href="/api/admin/backup">دانلود پشتیبان کامل JSON</a>
+                    {role === "owner" ? (
+                      <>
+                        <a className={styles.previewProductButton} href="/api/admin/media-backup">دانلود پشتیبان کامل رسانه</a>
+                        <p>این فایل ممکن است شامل تصاویر، مدارک فروشندگان و فیش‌های پرداخت باشد؛ آن را خصوصی نگهداری کنید.</p>
+                      </>
+                    ) : null}
                     <div className={styles.campaignList}>
                       {revisions.length === 0 ? <p>هنوز نسخهٔ قبلی ثبت نشده است.</p> : null}
                       {revisions.slice(0, 10).map((revision) => (

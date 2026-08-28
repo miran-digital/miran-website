@@ -70,6 +70,151 @@ async function createD1TestDatabase() {
   return { database, close: () => sqlite.close() };
 }
 
+class FakeR2Bucket {
+  constructor(objects = [], options = {}) {
+    this.objects = new Map(objects.map((object) => [object.key, {
+      bytes: new Uint8Array(object.bytes),
+      etag: object.etag ?? `etag-${object.key}`,
+      uploaded: object.uploaded ?? new Date("2026-08-28T10:00:00.000Z"),
+      httpMetadata: object.httpMetadata ?? {},
+      customMetadata: object.customMetadata ?? {},
+    }]));
+    this.pageSize = options.pageSize ?? 1000;
+    this.missingKeys = new Set(options.missingKeys ?? []);
+    this.getSizeOffsets = new Map(Object.entries(options.getSizeOffsets ?? {}));
+    this.getEtags = new Map(Object.entries(options.getEtags ?? {}));
+    this.afterGet = options.afterGet ?? null;
+    this.listCalls = [];
+  }
+
+  async list(options = {}) {
+    assert.deepEqual(options.include, ["httpMetadata", "customMetadata"]);
+    this.listCalls.push(options.cursor);
+    const keys = [...this.objects.keys()].sort();
+    const offset = options.cursor ? Number(options.cursor) : 0;
+    const pageKeys = keys.slice(offset, offset + this.pageSize);
+    const nextOffset = offset + pageKeys.length;
+    const truncated = nextOffset < keys.length;
+    return {
+      objects: pageKeys.map((key) => {
+        const object = this.objects.get(key);
+        return {
+          key,
+          size: object.bytes.byteLength,
+          etag: object.etag,
+          uploaded: object.uploaded,
+          httpMetadata: object.httpMetadata,
+          customMetadata: object.customMetadata,
+          httpEtag: `"${object.etag}"`,
+          writeHttpMetadata() {},
+        };
+      }),
+      truncated,
+      ...(truncated ? { cursor: String(nextOffset) } : {}),
+    };
+  }
+
+  async get(key) {
+    if (this.missingKeys.has(key)) return null;
+    const stored = this.objects.get(key);
+    if (!stored) return null;
+    const snapshot = {
+      bytes: new Uint8Array(stored.bytes),
+      etag: stored.etag,
+      uploaded: stored.uploaded,
+      httpMetadata: structuredClone(stored.httpMetadata),
+      customMetadata: structuredClone(stored.customMetadata),
+    };
+    if (this.afterGet) await this.afterGet(this, key);
+    const sizeOffset = Number(this.getSizeOffsets.get(key) ?? 0);
+    const etag = this.getEtags.get(key) ?? snapshot.etag;
+    return {
+      key,
+      size: snapshot.bytes.byteLength + sizeOffset,
+      etag,
+      uploaded: snapshot.uploaded,
+      httpMetadata: snapshot.httpMetadata,
+      customMetadata: snapshot.customMetadata,
+      httpEtag: `"${etag}"`,
+      writeHttpMetadata() {},
+      body: new Blob([snapshot.bytes]).stream(),
+    };
+  }
+
+  addObject(object) {
+    this.objects.set(object.key, {
+      bytes: new Uint8Array(object.bytes),
+      etag: object.etag ?? `etag-${object.key}`,
+      uploaded: object.uploaded ?? new Date("2026-08-28T10:00:00.000Z"),
+      httpMetadata: object.httpMetadata ?? {},
+      customMetadata: object.customMetadata ?? {},
+    });
+  }
+}
+
+async function readMediaBackupTar(bucket) {
+  const { createMediaBackupTar } = await import("../lib/media-backup.ts");
+  const archive = await createMediaBackupTar(bucket, {
+    exportedAt: "2026-08-28T12:00:00.000Z",
+  });
+  const bytes = new Uint8Array(await new Response(archive.body).arrayBuffer());
+  return { bytes, entries: parseTarEntries(bytes) };
+}
+
+function parseTarEntries(archive) {
+  const decoder = new TextDecoder();
+  const entries = new Map();
+  let pendingPax = {};
+  let offset = 0;
+  while (offset + 512 <= archive.length) {
+    const header = archive.subarray(offset, offset + 512);
+    if (header.every((value) => value === 0)) break;
+    const name = readTarText(header.subarray(0, 100), decoder);
+    const headerSize = readTarOctal(header.subarray(124, 136), decoder);
+    const type = String.fromCharCode(header[156] || 48);
+    const effectiveSize = type === "x" ? headerSize : Number(pendingPax.size ?? headerSize);
+    const bodyStart = offset + 512;
+    const bodyEnd = bodyStart + effectiveSize;
+    assert.ok(bodyEnd <= archive.length, "TAR entry body must be complete");
+    const body = archive.slice(bodyStart, bodyEnd);
+    if (type === "x") {
+      pendingPax = parsePaxRecords(body, decoder);
+    } else {
+      const path = pendingPax.path ?? name;
+      entries.set(path, body);
+      pendingPax = {};
+    }
+    offset = bodyStart + effectiveSize + ((512 - (effectiveSize % 512)) % 512);
+  }
+  return entries;
+}
+
+function parsePaxRecords(bytes, decoder) {
+  const fields = {};
+  let offset = 0;
+  while (offset < bytes.length) {
+    const space = bytes.indexOf(0x20, offset);
+    assert.ok(space > offset, "PAX record length is present");
+    const length = Number(decoder.decode(bytes.subarray(offset, space)));
+    const record = decoder.decode(bytes.subarray(space + 1, offset + length - 1));
+    const equals = record.indexOf("=");
+    assert.ok(equals > 0, "PAX record has a field name");
+    fields[record.slice(0, equals)] = record.slice(equals + 1);
+    offset += length;
+  }
+  return fields;
+}
+
+function readTarText(bytes, decoder) {
+  const zero = bytes.indexOf(0);
+  return decoder.decode(zero === -1 ? bytes : bytes.subarray(0, zero));
+}
+
+function readTarOctal(bytes, decoder) {
+  const value = readTarText(bytes, decoder).trim();
+  return value ? Number.parseInt(value, 8) : 0;
+}
+
 test("converts Jalali amazing-offer dates to the Iran timeline", async () => {
   const { jalaliDateTimeToIso, isoToJalaliInput } = await import(
     "../lib/jalali.ts"
@@ -1206,6 +1351,216 @@ test("exports every D1 table in the owner backup format", async () => {
   assert.deepEqual(delegatedBackup.tables.admin_owner_credentials, []);
   assert.deepEqual(delegatedBackup.tables.admin_owner_sessions, []);
   d1.close();
+});
+
+test("ignores only internal database tables in backup schema validation", async () => {
+  const {
+    assertBackupTableInventory,
+    LOGICAL_BACKUP_TABLES,
+  } = await import("../db/backup-repository.ts");
+  const applicationTables = [...LOGICAL_BACKUP_TABLES];
+
+  for (const internalTable of [
+    "_cf_KV",
+    "sqlite_sequence",
+    "d1_migrations",
+    "__drizzle_migrations",
+  ]) {
+    assert.doesNotThrow(() => {
+      assertBackupTableInventory([...applicationTables, internalTable]);
+    });
+  }
+
+  assert.throws(
+    () => assertBackupTableInventory([...applicationTables, "future_feature_table"]),
+    /BACKUP_DATABASE_SCHEMA_MISMATCH/,
+  );
+  assert.throws(
+    () => assertBackupTableInventory(applicationTables.slice(1)),
+    /BACKUP_DATABASE_SCHEMA_MISMATCH/,
+  );
+});
+
+test("round-trips long storefront settings and revisions without truncation", async () => {
+  const {
+    createLogicalDatabaseBackup,
+    restoreLogicalDatabaseBackup,
+  } = await import("../db/backup-repository.ts");
+  const source = await createD1TestDatabase();
+  const longSettings = JSON.stringify({
+    marker: "settings-long-value",
+    value: "تنظیمات-".repeat(40_000),
+  });
+  const longRevision = JSON.stringify({
+    marker: "revision-long-value",
+    value: "بازنگری-".repeat(40_000),
+  });
+  await source.database.prepare(
+    `INSERT INTO storefront_settings (id, data, updated_by)
+     VALUES ('primary', ?, 'owner@example.com')`,
+  ).bind(longSettings).run();
+  await source.database.prepare(
+    `INSERT INTO storefront_revisions (id, data, actor_email)
+     VALUES ('long-backup-revision', ?, 'owner@example.com')`,
+  ).bind(longRevision).run();
+
+  const backup = await createLogicalDatabaseBackup(source.database);
+  assert.equal(
+    backup.tables.storefront_settings.find((row) => row.id === "primary")?.data,
+    longSettings,
+  );
+  assert.equal(
+    backup.tables.storefront_revisions.find((row) => row.id === "long-backup-revision")?.data,
+    longRevision,
+  );
+
+  const target = await createD1TestDatabase();
+  await restoreLogicalDatabaseBackup(backup, target.database);
+  assert.equal((await target.database.prepare(
+    "SELECT data FROM storefront_settings WHERE id = 'primary'",
+  ).first()).data, longSettings);
+  assert.equal((await target.database.prepare(
+    "SELECT data FROM storefront_revisions WHERE id = 'long-backup-revision'",
+  ).first()).data, longRevision);
+  source.close();
+  target.close();
+});
+
+test("creates a complete TAR manifest for an empty R2 bucket", async () => {
+  const { bytes, entries } = await readMediaBackupTar(new FakeR2Bucket());
+  assert.deepEqual([...entries.keys()], ["_miran/manifest.json"]);
+  const manifest = JSON.parse(new TextDecoder().decode(entries.get("_miran/manifest.json")));
+  assert.deepEqual(manifest, {
+    format: "miran-shop-r2-backup-v1",
+    exportedAt: "2026-08-28T12:00:00.000Z",
+    objectCount: 0,
+    totalObjectBytes: 0,
+    objects: [],
+    complete: true,
+  });
+  assert.equal(bytes.length % 512, 0);
+  assert.ok(bytes.subarray(-1024).every((value) => value === 0));
+});
+
+test("preserves one R2 object's original key, bytes, and metadata in TAR", async () => {
+  const key = "products/محصول-نمونه/" + "long-key-".repeat(20) + "image.webp";
+  const content = new Uint8Array([0, 1, 2, 127, 128, 254, 255]);
+  const bucket = new FakeR2Bucket([{
+    key,
+    bytes: content,
+    etag: "single-object-etag",
+    uploaded: new Date("2026-08-28T11:22:33.000Z"),
+    httpMetadata: { contentType: "image/webp", cacheControl: "public, max-age=60" },
+    customMetadata: { uploadedBy: "owner@example.com", purpose: "catalog" },
+  }]);
+  const { entries } = await readMediaBackupTar(bucket);
+  assert.deepEqual(entries.get(key), content);
+  const manifest = JSON.parse(new TextDecoder().decode(entries.get("_miran/manifest.json")));
+  assert.equal(manifest.objectCount, 1);
+  assert.equal(manifest.totalObjectBytes, content.byteLength);
+  assert.deepEqual(manifest.objects, [{
+    key,
+    size: content.byteLength,
+    etag: "single-object-etag",
+    uploaded: "2026-08-28T11:22:33.000Z",
+    httpMetadata: { cacheControl: "public, max-age=60", contentType: "image/webp" },
+    customMetadata: { purpose: "catalog", uploadedBy: "owner@example.com" },
+  }]);
+});
+
+test("lists every R2 page for both inventories without assuming a full page", async () => {
+  const objects = [
+    { key: "branding/logo.svg", bytes: new TextEncoder().encode("logo") },
+    { key: "orphan/unreferenced.bin", bytes: new Uint8Array([4, 5]) },
+    { key: "seller-documents/private.pdf", bytes: new TextEncoder().encode("%PDF") },
+  ];
+  const bucket = new FakeR2Bucket(objects, { pageSize: 1 });
+  const { entries } = await readMediaBackupTar(bucket);
+  for (const object of objects) assert.deepEqual(entries.get(object.key), object.bytes);
+  assert.deepEqual(bucket.listCalls, [undefined, "1", "2", undefined, "1", "2"]);
+  const manifest = JSON.parse(new TextDecoder().decode(entries.get("_miran/manifest.json")));
+  assert.equal(manifest.objectCount, 3);
+  assert.equal(manifest.totalObjectBytes, 10);
+});
+
+test("fails the R2 backup stream when an inventoried object disappears", async () => {
+  const bucket = new FakeR2Bucket([
+    { key: "products/missing.webp", bytes: new Uint8Array([1]) },
+  ], { missingKeys: ["products/missing.webp"] });
+  await assert.rejects(readMediaBackupTar(bucket), /MEDIA_BACKUP_OBJECT_MISSING/);
+});
+
+test("fails the R2 backup stream when object size or etag differs", async () => {
+  const object = { key: "products/mismatch.webp", bytes: new Uint8Array([1, 2, 3]) };
+  await assert.rejects(
+    readMediaBackupTar(new FakeR2Bucket([object], {
+      getSizeOffsets: { [object.key]: 1 },
+    })),
+    /MEDIA_BACKUP_OBJECT_SIZE_MISMATCH/,
+  );
+  await assert.rejects(
+    readMediaBackupTar(new FakeR2Bucket([object], {
+      getEtags: { [object.key]: "changed-etag" },
+    })),
+    /MEDIA_BACKUP_OBJECT_ETAG_MISMATCH/,
+  );
+});
+
+test("does not finish or mark an R2 backup complete when inventory changes", async () => {
+  let changed = false;
+  const bucket = new FakeR2Bucket([
+    { key: "products/stable.webp", bytes: new Uint8Array([1, 2, 3]) },
+  ], {
+    afterGet(fake) {
+      if (changed) return;
+      changed = true;
+      fake.addObject({ key: "products/added-during-backup.webp", bytes: new Uint8Array([4]) });
+    },
+  });
+  await assert.rejects(readMediaBackupTar(bucket), /MEDIA_BACKUP_INVENTORY_CHANGED/);
+});
+
+test("allows full media backup only for an authenticated owner", async () => {
+  const { isOwnerMediaBackupAccess } = await import("../lib/media-backup.ts");
+  assert.equal(isOwnerMediaBackupAccess({ allowed: false }), false);
+  assert.equal(isOwnerMediaBackupAccess({
+    allowed: true,
+    role: "order_manager",
+    permissions: ["backup.read"],
+  }), false);
+  assert.equal(isOwnerMediaBackupAccess({ allowed: true, role: "owner" }), true);
+
+  const routeSource = await readFile(
+    new URL("../app/api/admin/media-backup/route.ts", import.meta.url),
+    "utf8",
+  );
+  const permissionCheck = routeSource.indexOf('getAdminAccess("backup.read")');
+  const ownerCheck = routeSource.indexOf("isOwnerMediaBackupAccess(access)");
+  const bucketRead = routeSource.indexOf("getRuntimeEnv<{ BUCKET?: R2Bucket }>()");
+  assert.ok(permissionCheck >= 0 && ownerCheck > permissionCheck && bucketRead > ownerCheck);
+  assert.doesNotMatch(routeSource, /bucket\.(?:put|delete)\(/);
+  assert.match(routeSource, /"content-type": "application\/x-tar"/);
+  assert.match(routeSource, /"content-disposition": `attachment;/);
+  assert.match(routeSource, /"cache-control": "private, no-store"/);
+  assert.match(routeSource, /"x-content-type-options": "nosniff"/);
+
+  const adminSource = await readFile(
+    new URL("../features/admin/admin-page.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(adminSource, /role === "owner"[\s\S]*?دانلود پشتیبان کامل رسانه/);
+  assert.match(adminSource, /این فایل ممکن است شامل تصاویر، مدارک فروشندگان و فیش‌های پرداخت باشد؛ آن را خصوصی نگهداری کنید./);
+});
+
+test("does not serve the media backup endpoint to an anonymous request", async () => {
+  const worker = await loadWorker();
+  const response = await worker.fetch(
+    new Request("http://localhost/api/admin/media-backup"),
+    {},
+    { waitUntil() {}, passThroughOnException() {} },
+  );
+  assert.notEqual(response.status, 200);
+  assert.notEqual(response.headers.get("content-type"), "application/x-tar");
 });
 
 test("restores the complete migration 0016 backup and rejects legacy backups before writes", async () => {
