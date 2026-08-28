@@ -1,0 +1,41 @@
+name: Diagnose v50 production artifact
+
+on:
+  push:
+    branches:
+      - diagnose/backup-v50-artifact
+
+permissions:
+  contents: read
+
+jobs:
+  build-artifact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Fresh install from lockfile
+        run: npm ci
+
+      - name: Reproduce production build
+        run: npm run build
+
+      - name: Record route chunks
+        run: |
+          find dist/server/_next/static -maxdepth 1 -type f -name 'route-*.js' -print -exec sha256sum {} \;
+
+      - name: Upload server chunks
+        uses: actions/upload-artifact@v4
+        with:
+          name: v50-server-chunks
+          path: |
+            dist/server/_next/static/*.js
+            dist/server/_next/static/*.map
+          if-no-files-found: error
+          retention-days: 1
