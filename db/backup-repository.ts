@@ -215,9 +215,7 @@ function isOwnerAuthenticationTable(table: BackupTable) {
 function mapRawBackupRows(rawRows: unknown[][]): [string[], Record<string, unknown>[]] {
   const [rawColumns, ...rawValues] = rawRows;
   if (
-    !Array.isArray(rawColumns) ||
-    rawColumns.length === 0 ||
-    !rawColumns.every((column) => typeof column === "string" && column.length > 0) ||
+    !isBackupColumnNames(rawColumns) ||
     new Set(rawColumns).size !== rawColumns.length
   ) {
     throw new Error("BACKUP_DATABASE_SCHEMA_MISMATCH");
@@ -232,6 +230,12 @@ function mapRawBackupRows(rawRows: unknown[][]): [string[], Record<string, unkno
     );
   });
   return [columns, rows];
+}
+
+function isBackupColumnNames(value: unknown): value is string[] {
+  return Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((column) => typeof column === "string" && column.length > 0);
 }
 
 async function readTableColumns(database: D1Database, table: BackupTable) {
