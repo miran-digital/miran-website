@@ -62,18 +62,18 @@ export async function createLogicalDatabaseBackup(
   const database = databaseOverride ?? await requireDatabase();
   await assertDatabaseTableCoverage(database);
   const includeOwnerAuthentication = options.includeOwnerAuthentication !== false;
-  const entries = await Promise.all(
-    LOGICAL_BACKUP_TABLES.map(async (table) => {
-      const columns = await readTableColumns(database, table);
-      if (!includeOwnerAuthentication && (table === "admin_owner_credentials" || table === "admin_owner_sessions")) {
-        return [table, columns, []] as const;
-      }
-      const result = await database
-        .prepare(`SELECT * FROM ${quoteIdentifier(table)} ORDER BY rowid ASC`)
-        .all<Record<string, unknown>>();
-      return [table, columns, result.results] as const;
-    }),
-  );
+  const entries: Array<readonly [BackupTable, string[], Record<string, unknown>[]]> = [];
+  for (const table of LOGICAL_BACKUP_TABLES) {
+    const omitOwnerRows = !includeOwnerAuthentication && isOwnerAuthenticationTable(table);
+    const query = `SELECT * FROM ${quoteIdentifier(table)}${
+      omitOwnerRows ? " WHERE 0" : ""
+    } ORDER BY rowid ASC`;
+    const rawRows = await database
+      .prepare(query)
+      .raw<unknown[]>({ columnNames: true });
+    const [columns, rows] = mapRawBackupRows(rawRows);
+    entries.push([table, columns, rows]);
+  }
   const schema = Object.fromEntries(
     entries.map(([table, columns]) => [table, columns]),
   ) as LogicalDatabaseBackup["schema"];
@@ -174,12 +174,10 @@ export async function restoreLogicalDatabaseBackup(
 }
 
 async function readDatabaseSchema(database: D1Database) {
-  const entries = await Promise.all(
-    LOGICAL_BACKUP_TABLES.map(async (table) => [
-      table,
-      await readTableColumns(database, table),
-    ] as const),
-  );
+  const entries: Array<readonly [BackupTable, string[]]> = [];
+  for (const table of LOGICAL_BACKUP_TABLES) {
+    entries.push([table, await readTableColumns(database, table)]);
+  }
   return Object.fromEntries(entries) as BackupSchema;
 }
 
@@ -208,6 +206,32 @@ function isInternalDatabaseTable(tableName: string) {
     normalizedName.startsWith("_cf_") ||
     normalizedName.startsWith("d1_") ||
     normalizedName === "__drizzle_migrations";
+}
+
+function isOwnerAuthenticationTable(table: BackupTable) {
+  return table === "admin_owner_credentials" || table === "admin_owner_sessions";
+}
+
+function mapRawBackupRows(rawRows: unknown[][]): [string[], Record<string, unknown>[]] {
+  const [rawColumns, ...rawValues] = rawRows;
+  if (
+    !Array.isArray(rawColumns) ||
+    rawColumns.length === 0 ||
+    !rawColumns.every((column) => typeof column === "string" && column.length > 0) ||
+    new Set(rawColumns).size !== rawColumns.length
+  ) {
+    throw new Error("BACKUP_DATABASE_SCHEMA_MISMATCH");
+  }
+  const columns = [...rawColumns];
+  const rows = rawValues.map((values) => {
+    if (!Array.isArray(values) || values.length !== columns.length) {
+      throw new Error("BACKUP_DATABASE_SCHEMA_MISMATCH");
+    }
+    return Object.fromEntries(
+      columns.map((column, index) => [column, values[index]]),
+    );
+  });
+  return [columns, rows];
 }
 
 async function readTableColumns(database: D1Database, table: BackupTable) {

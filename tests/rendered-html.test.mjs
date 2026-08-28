@@ -14,6 +14,22 @@ async function loadWorker() {
 async function createD1TestDatabase() {
   const { DatabaseSync } = await import("node:sqlite");
   const sqlite = new DatabaseSync(":memory:");
+  let queryExecutions = 0;
+  let activeQueries = 0;
+  let maxConcurrentQueries = 0;
+  let executedQueries = [];
+  const execute = async (query, operation) => {
+    queryExecutions += 1;
+    executedQueries.push(query);
+    activeQueries += 1;
+    maxConcurrentQueries = Math.max(maxConcurrentQueries, activeQueries);
+    await Promise.resolve();
+    try {
+      return operation();
+    } finally {
+      activeQueries -= 1;
+    }
+  };
   for (const file of [
     "0000_breezy_bastion.sql",
     "0001_big_masked_marvel.sql",
@@ -49,14 +65,28 @@ async function createD1TestDatabase() {
           return prepared;
         },
         async first() {
-          return statement.get(...values) ?? null;
+          return execute(query, () => statement.get(...values) ?? null);
         },
         async all() {
-          return { results: statement.all(...values), success: true, meta: {} };
+          return execute(query, () => ({
+            results: statement.all(...values),
+            success: true,
+            meta: {},
+          }));
+        },
+        async raw(options = {}) {
+          return execute(query, () => {
+            const rows = statement.all(...values);
+            const columns = statement.columns().map((column) => column.name);
+            const valuesByRow = rows.map((row) => columns.map((column) => row[column]));
+            return options.columnNames ? [columns, ...valuesByRow] : valuesByRow;
+          });
         },
         async run() {
-          const result = statement.run(...values);
-          return { results: [], success: true, meta: { changes: result.changes } };
+          return execute(query, () => {
+            const result = statement.run(...values);
+            return { results: [], success: true, meta: { changes: result.changes } };
+          });
         },
       };
       return prepared;
@@ -67,7 +97,23 @@ async function createD1TestDatabase() {
       return results;
     },
   };
-  return { database, close: () => sqlite.close() };
+  return {
+    database,
+    close: () => sqlite.close(),
+    resetQueryDiagnostics() {
+      queryExecutions = 0;
+      activeQueries = 0;
+      maxConcurrentQueries = 0;
+      executedQueries = [];
+    },
+    queryDiagnostics() {
+      return {
+        executionCount: queryExecutions,
+        maxConcurrentQueries,
+        queries: [...executedQueries],
+      };
+    },
+  };
 }
 
 class FakeR2Bucket {
@@ -1309,6 +1355,21 @@ test("exports every D1 table in the owner backup format", async () => {
         new_price_minor, currency, changed_by)
      VALUES (?, ?, ?, ?, ?, ?, 'IRR', ?)`,
   ).bind("backup-price", product.id, "product", product.id, 900, 1000, "owner@example.com").run();
+  await d1.database.prepare(
+    `INSERT INTO admin_owner_credentials
+       (id, username, password_salt, password_hash, password_iterations, owner_email, updated_by)
+     VALUES ('owner', 'backup-owner', 'backup-salt', 'backup-hash', 210000, 'owner@example.com', 'owner@example.com')`,
+  ).run();
+  await d1.database.prepare(
+    `INSERT INTO admin_owner_sessions
+       (token_hash, owner_email, expires_at)
+     VALUES ('backup-session-hash', 'owner@example.com', '2027-08-28T00:00:00.000Z')`,
+  ).run();
+  const emptyTableColumns = (await d1.database.prepare(
+    "PRAGMA table_info(\"payment_attempts\")",
+  ).all()).results
+    .sort((left, right) => left.cid - right.cid)
+    .map((column) => column.name);
   const backup = await createLogicalDatabaseBackup(d1.database);
   assert.equal(backup.format, "miran-shop-d1-backup-v2");
   assert.equal(backup.counts.products, 21);
@@ -1330,8 +1391,11 @@ test("exports every D1 table in the owner backup format", async () => {
   assert.ok(Array.isArray(backup.tables.customer_notifications));
   assert.ok(Array.isArray(backup.tables.request_rate_limits));
   assert.ok(Array.isArray(backup.tables.customer_accounts));
-  assert.ok(Array.isArray(backup.tables.admin_owner_credentials));
-  assert.ok(Array.isArray(backup.tables.admin_owner_sessions));
+  assert.deepEqual(backup.schema.payment_attempts, emptyTableColumns);
+  assert.deepEqual(backup.tables.payment_attempts, []);
+  assert.equal(backup.tables.admin_owner_credentials[0]?.username, "backup-owner");
+  assert.equal(backup.tables.admin_owner_credentials[0]?.password_hash, "backup-hash");
+  assert.equal(backup.tables.admin_owner_sessions[0]?.token_hash, "backup-session-hash");
   assert.equal(backup.media.included, false);
   const actualTables = (await d1.database.prepare(
     `SELECT name FROM sqlite_schema
@@ -1350,6 +1414,44 @@ test("exports every D1 table in the owner backup format", async () => {
   const delegatedBackup = await createLogicalDatabaseBackup(d1.database, { includeOwnerAuthentication: false });
   assert.deepEqual(delegatedBackup.tables.admin_owner_credentials, []);
   assert.deepEqual(delegatedBackup.tables.admin_owner_sessions, []);
+  d1.close();
+});
+
+test("uses one sequential raw query per backup table within a safe D1 budget", async () => {
+  const {
+    createLogicalDatabaseBackup,
+    LOGICAL_BACKUP_TABLES,
+  } = await import("../db/backup-repository.ts");
+  const d1 = await createD1TestDatabase();
+  d1.resetQueryDiagnostics();
+
+  const backup = await createLogicalDatabaseBackup(d1.database);
+  const diagnostics = d1.queryDiagnostics();
+  assert.equal(Object.keys(backup.tables).length, 26);
+  assert.equal(LOGICAL_BACKUP_TABLES.length, 26);
+  assert.equal(diagnostics.executionCount, 27);
+  assert.ok(diagnostics.executionCount <= 30);
+  assert.equal(diagnostics.maxConcurrentQueries, 1);
+  assert.equal(
+    diagnostics.queries.filter((query) => /^PRAGMA\s+table_info/i.test(query.trim())).length,
+    0,
+  );
+  assert.equal(
+    diagnostics.queries.filter((query) => /^SELECT \* FROM "/i.test(query.trim())).length,
+    26,
+  );
+
+  const source = await readFile(
+    new URL("../db/backup-repository.ts", import.meta.url),
+    "utf8",
+  );
+  const implementation = source.slice(
+    source.indexOf("export async function createLogicalDatabaseBackup"),
+    source.indexOf("export function inspectLogicalDatabaseBackup"),
+  );
+  assert.match(implementation, /\.raw<unknown\[\]>\(\{ columnNames: true \}\)/);
+  assert.doesNotMatch(implementation, /Promise\.all/);
+  assert.doesNotMatch(implementation, /PRAGMA\s+table_info/i);
   d1.close();
 });
 
