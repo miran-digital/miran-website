@@ -1313,10 +1313,7 @@ test("keeps successful payment callbacks idempotent and prevents paid downgrade"
 });
 
 test("exports every D1 table in the owner backup format", async () => {
-  const {
-    createLogicalDatabaseBackup,
-    LOGICAL_BACKUP_TABLES,
-  } = await import("../db/backup-repository.ts");
+  const { createLogicalDatabaseBackup } = await import("../db/backup-repository.ts");
   const d1 = await createD1TestDatabase();
   const product = await d1.database.prepare(
     "SELECT id FROM products ORDER BY rowid LIMIT 1",
