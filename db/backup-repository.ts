@@ -193,19 +193,10 @@ async function assertDatabaseTableCoverage(database: D1Database) {
 }
 
 export function assertBackupTableInventory(tableNames: readonly string[]) {
-  const actual = tableNames
-    .filter((table) => !isInternalDatabaseTable(table))
-    .sort();
-  const expected = [...LOGICAL_BACKUP_TABLES].sort();
-  if (!sameStrings(actual, expected)) throw new Error("BACKUP_DATABASE_SCHEMA_MISMATCH");
-}
-
-function isInternalDatabaseTable(tableName: string) {
-  const normalizedName = tableName.toLowerCase();
-  return normalizedName.startsWith("sqlite_") ||
-    normalizedName.startsWith("_cf_") ||
-    normalizedName.startsWith("d1_") ||
-    normalizedName === "__drizzle_migrations";
+  const availableTables = new Set(tableNames);
+  if (LOGICAL_BACKUP_TABLES.some((table) => !availableTables.has(table))) {
+    throw new Error("BACKUP_DATABASE_SCHEMA_MISMATCH");
+  }
 }
 
 function isOwnerAuthenticationTable(table: BackupTable) {

@@ -1397,20 +1397,11 @@ test("exports every D1 table in the owner backup format", async () => {
   assert.equal(backup.tables.admin_owner_credentials[0]?.password_hash, "backup-hash");
   assert.equal(backup.tables.admin_owner_sessions[0]?.token_hash, "backup-session-hash");
   assert.equal(backup.media.included, false);
-  const actualTables = (await d1.database.prepare(
-    `SELECT name FROM sqlite_schema
-      WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-      ORDER BY name`,
-  ).all()).results.map((row) => row.name);
-  assert.deepEqual([...LOGICAL_BACKUP_TABLES].sort(), actualTables);
   await d1.database.prepare(
-    "CREATE TABLE future_uncovered_table (id TEXT PRIMARY KEY NOT NULL)",
+    "CREATE TABLE provider_runtime_table (id TEXT PRIMARY KEY NOT NULL)",
   ).run();
-  await assert.rejects(
-    createLogicalDatabaseBackup(d1.database),
-    /BACKUP_DATABASE_SCHEMA_MISMATCH/,
-  );
-  await d1.database.prepare("DROP TABLE future_uncovered_table").run();
+  const backupWithRuntimeTable = await createLogicalDatabaseBackup(d1.database);
+  assert.equal(Object.keys(backupWithRuntimeTable.tables).length, 26);
   const delegatedBackup = await createLogicalDatabaseBackup(d1.database, { includeOwnerAuthentication: false });
   assert.deepEqual(delegatedBackup.tables.admin_owner_credentials, []);
   assert.deepEqual(delegatedBackup.tables.admin_owner_sessions, []);
@@ -1455,32 +1446,66 @@ test("uses one sequential raw query per backup table within a safe D1 budget", a
   d1.close();
 });
 
-test("ignores only internal database tables in backup schema validation", async () => {
+test("requires every logical backup table while allowing additional runtime tables", async () => {
   const {
     assertBackupTableInventory,
     LOGICAL_BACKUP_TABLES,
   } = await import("../db/backup-repository.ts");
   const applicationTables = [...LOGICAL_BACKUP_TABLES];
 
-  for (const internalTable of [
+  for (const additionalRuntimeTable of [
     "_cf_KV",
     "sqlite_sequence",
     "d1_migrations",
     "__drizzle_migrations",
+    "provider_runtime_table",
+    "future_feature_table",
   ]) {
     assert.doesNotThrow(() => {
-      assertBackupTableInventory([...applicationTables, internalTable]);
+      assertBackupTableInventory([...applicationTables, additionalRuntimeTable]);
     });
   }
 
   assert.throws(
-    () => assertBackupTableInventory([...applicationTables, "future_feature_table"]),
-    /BACKUP_DATABASE_SCHEMA_MISMATCH/,
-  );
-  assert.throws(
     () => assertBackupTableInventory(applicationTables.slice(1)),
     /BACKUP_DATABASE_SCHEMA_MISMATCH/,
   );
+});
+
+test("keeps migration-defined application tables exactly covered by the backup contract", async () => {
+  const { LOGICAL_BACKUP_TABLES } = await import("../db/backup-repository.ts");
+  const d1 = await createD1TestDatabase();
+  const readMigrationApplicationTables = async () =>
+    (await d1.database.prepare(
+      `SELECT name FROM sqlite_schema
+        WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+        ORDER BY name`,
+    ).all()).results.map((row) => row.name);
+  const assertMigrationCoverage = (migrationTables) => {
+    assert.deepEqual(
+      [...migrationTables].sort(),
+      [...LOGICAL_BACKUP_TABLES].sort(),
+      "Migration-defined application tables must exactly match LOGICAL_BACKUP_TABLES",
+    );
+  };
+
+  const migrationTables = await readMigrationApplicationTables();
+  assert.equal(migrationTables.length, 26);
+  assert.doesNotThrow(() => assertMigrationCoverage(migrationTables));
+
+  await d1.database.prepare(
+    "CREATE TABLE future_feature_table (id TEXT PRIMARY KEY NOT NULL)",
+  ).run();
+  const futureMigrationTables = await readMigrationApplicationTables();
+  assert.throws(
+    () => assertMigrationCoverage(futureMigrationTables),
+    /Migration-defined application tables must exactly match LOGICAL_BACKUP_TABLES/,
+  );
+  assert.throws(
+    () => assertMigrationCoverage(migrationTables.slice(1)),
+    /Migration-defined application tables must exactly match LOGICAL_BACKUP_TABLES/,
+  );
+  d1.close();
 });
 
 test("round-trips long storefront settings and revisions without truncation", async () => {
