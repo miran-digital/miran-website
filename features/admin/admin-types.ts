@@ -13,6 +13,8 @@ import {
   type BankTransferSettings,
 } from "../../lib/bank-transfer.ts";
 
+export const MAX_PRODUCT_IMAGES = 10;
+
 export type AdminSectionKey =
   | "hero"
   | "categories"
@@ -594,7 +596,7 @@ export function normalizeAdminState(state: AdminState): AdminState {
                 product.currency,
               )
             : 0,
-      imageUrls: [...new Set(product.imageUrls.map(normalizeProductMediaUrl).filter(Boolean))].slice(0, 8),
+      imageUrls: [...new Set(product.imageUrls.map(normalizeProductMediaUrl).filter(Boolean))].slice(0, MAX_PRODUCT_IMAGES),
       videoUrl: normalizeProductVideoUrl(product.videoUrl),
       amazingEnabled: product.amazingEnabled === true,
       amazingStartsAt: product.amazingStartsAt.slice(0, 40),
@@ -1007,7 +1009,7 @@ function isProduct(value: unknown): value is AdminProduct {
     item.reservedQuantity >= 0 &&
     item.reservedQuantity <= item.stockQuantity &&
     Array.isArray(item.imageUrls) &&
-    item.imageUrls.length <= 8 &&
+    item.imageUrls.length <= MAX_PRODUCT_IMAGES &&
     item.imageUrls.every((url) => isShortString(url, 500)) &&
     isShortString(item.videoUrl, 500) &&
     typeof item.amazingEnabled === "boolean" &&

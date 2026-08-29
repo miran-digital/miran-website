@@ -1907,8 +1907,8 @@ test("keeps product editor and product list independently scrollable only on des
     new URL("../features/admin/admin.module.css", import.meta.url),
     "utf8",
   );
-  assert.match(css, /@media \(min-width: 64rem\)[\s\S]*?\.productWorkspace \{[\s\S]*?height: max\(32rem, calc\(100dvh - 15rem\)\);[\s\S]*?overflow: hidden;/);
-  assert.match(css, /@media \(min-width: 64rem\)[\s\S]*?\.productForm,[\s\S]*?\.productList \{[\s\S]*?overflow-y: auto;[\s\S]*?overscroll-behavior: contain;/);
+  assert.match(css, /@media \(min-width: 64rem\)[\s\S]*?\.productWorkspace \{[\s\S]*?height: max\(34rem, calc\(100dvh - 11\.5rem\)\);[\s\S]*?min-height: 0;[\s\S]*?overflow: hidden;/);
+  assert.match(css, /@media \(min-width: 64rem\)[\s\S]*?\.productForm,[\s\S]*?\.productList \{[\s\S]*?min-height: 0;[\s\S]*?overflow-y: auto;[\s\S]*?overflow-x: hidden;[\s\S]*?overscroll-behavior: contain;[\s\S]*?scrollbar-gutter: stable;/);
   assert.match(css, /@media \(max-width: 47\.99rem\)/);
   const baseColumns = css.match(/\.productForm,[\s\S]*?\.productList \{[\s\S]*?max-height: none;[\s\S]*?overflow: visible;/);
   assert.ok(baseColumns, "mobile and tablet keep normal page scrolling");
@@ -2629,6 +2629,7 @@ test("keeps every destructive management endpoint private", async () => {
   const worker = await loadWorker();
   const paths = [
     "/api/admin/products",
+    "/api/admin/product-variants",
     "/api/admin/orders",
     "/api/admin/sellers",
     "/api/admin/customers",
@@ -2644,7 +2645,7 @@ test("keeps every destructive management endpoint private", async () => {
     {},
     { waitUntil() {}, passThroughOnException() {} },
   )));
-  assert.deepEqual(responses.map((response) => response.status), [401, 401, 401, 401, 401, 401]);
+  assert.deepEqual(responses.map((response) => response.status), [401, 401, 401, 401, 401, 401, 401]);
 });
 
 test("keeps owner credential settings private", async () => {
@@ -3421,6 +3422,177 @@ test("lets authorized management remove products and preserves products referenc
   assert.match(stateRouteSource, /مجوز حذف این اطلاعات/);
   assert.match(stateRouteSource, /admins\.write/);
   d1.close();
+});
+
+test("deletes only an unreserved owned variant and preserves product, sibling, offers, media, and history", async () => {
+  const { deleteAdminProductVariant } = await import("../db/admin-repository.ts");
+  const d1 = await createD1TestDatabase();
+  const product = await d1.database.prepare(
+    "SELECT id, title, slug, price_minor, image_url, video_url FROM products ORDER BY rowid ASC LIMIT 1",
+  ).first();
+  const siblingProduct = await d1.database.prepare(
+    "SELECT id FROM products ORDER BY rowid ASC LIMIT 1 OFFSET 1",
+  ).first();
+  const snapshot = structuredClone(product);
+  await d1.database.prepare(
+    `INSERT INTO product_variants
+       (id, product_id, title, sku, price_minor, stock_quantity, reserved_quantity)
+     VALUES ('delete-variant', ?, 'حذف‌شونده', 'DELETE-VARIANT', 1200, 4, 0),
+            ('sibling-variant', ?, 'باقی‌مانده', 'SIBLING-VARIANT', 1300, 5, 0),
+            ('other-product-variant', ?, 'محصول دیگر', 'OTHER-VARIANT', 1400, 6, 0)`,
+  ).bind(product.id, product.id, siblingProduct.id).run();
+  await d1.database.prepare(
+    `INSERT INTO catalog_attribute_definitions (id, category_slug, code, label)
+     VALUES ('delete-attribute-definition', 'digital', 'color', 'رنگ')`,
+  ).run();
+  await d1.database.prepare(
+    `INSERT INTO product_variant_attribute_values
+       (id, variant_id, attribute_id, value_text, normalized_value)
+     VALUES ('delete-variant-attribute', 'delete-variant', 'delete-attribute-definition', 'مشکی', 'مشکی'),
+            ('sibling-variant-attribute', 'sibling-variant', 'delete-attribute-definition', 'سفید', 'سفید')`,
+  ).run();
+  await d1.database.prepare(
+    `INSERT INTO seller_offers
+       (id, product_id, seller_application_id, seller_name, price_minor, stock_quantity)
+     VALUES ('preserved-offer', ?, 'seller-1', 'فروشنده', 1100, 3)`,
+  ).bind(product.id).run();
+  await d1.database.prepare(
+    `INSERT INTO orders (
+       id, order_number, idempotency_key, customer_name, customer_email,
+       customer_phone, address_line, city, postcode, delivery_method,
+       currency, subtotal_minor, delivery_minor, total_minor
+     ) VALUES ('variant-history-order', 'MS-VARIANT-HISTORY', 'variant-history-key',
+       'مشتری', 'history@example.com', '09120000000', 'نشانی', 'تهران', '',
+       'standard', 'IRR', 1200, 0, 1200)`,
+  ).run();
+  await d1.database.prepare(
+    `INSERT INTO order_items (
+       id, order_id, product_id, variant_id, slug, sku, title, quantity,
+       unit_price_minor, line_total_minor
+     ) VALUES ('variant-history-item', 'variant-history-order', ?, 'delete-variant', ?,
+       'DELETE-VARIANT', 'تنوع تاریخی', 1, 1200, 1200)`,
+  ).bind(product.id, product.slug).run();
+
+  assert.deepEqual(
+    await deleteAdminProductVariant(product.id, "delete-variant", "owner@example.com", d1.database),
+    { deleted: true },
+  );
+  assert.equal(await d1.database.prepare("SELECT id FROM product_variants WHERE id = 'delete-variant'").first(), null);
+  assert.equal(await d1.database.prepare("SELECT id FROM product_variant_attribute_values WHERE variant_id = 'delete-variant'").first(), null);
+  assert.ok(await d1.database.prepare("SELECT id FROM product_variants WHERE id = 'sibling-variant'").first());
+  assert.ok(await d1.database.prepare("SELECT id FROM product_variant_attribute_values WHERE variant_id = 'sibling-variant'").first());
+  assert.ok(await d1.database.prepare("SELECT id FROM seller_offers WHERE id = 'preserved-offer'").first());
+  assert.ok(await d1.database.prepare("SELECT id FROM order_items WHERE id = 'variant-history-item' AND variant_id = 'delete-variant'").first());
+  assert.deepEqual(
+    await d1.database.prepare("SELECT id, title, slug, price_minor, image_url, video_url FROM products WHERE id = ?").bind(product.id).first(),
+    snapshot,
+  );
+  assert.equal((await d1.database.prepare(
+    "SELECT COUNT(*) AS count FROM admin_audit_log WHERE action = 'product.variant-deleted' AND subject_id = 'delete-variant'",
+  ).first()).count, 1);
+  await assert.rejects(
+    deleteAdminProductVariant(product.id, "other-product-variant", "owner@example.com", d1.database),
+    /VARIANT_NOT_FOUND/,
+  );
+
+  await d1.database.prepare(
+    `INSERT INTO product_variants
+       (id, product_id, title, sku, price_minor, stock_quantity, reserved_quantity)
+     VALUES ('reserved-variant', ?, 'رزروشده', 'RESERVED-VARIANT', 1500, 3, 1)`,
+  ).bind(product.id).run();
+  await d1.database.prepare(
+    `INSERT INTO product_variant_attribute_values
+       (id, variant_id, attribute_id, value_text, normalized_value)
+     VALUES ('reserved-variant-attribute', 'reserved-variant', 'delete-attribute-definition', 'قرمز', 'قرمز')`,
+  ).run();
+  await assert.rejects(
+    deleteAdminProductVariant(product.id, "reserved-variant", "owner@example.com", d1.database),
+    /VARIANT_RESERVED/,
+  );
+  assert.ok(await d1.database.prepare("SELECT id FROM product_variants WHERE id = 'reserved-variant'").first());
+  assert.ok(await d1.database.prepare("SELECT id FROM product_variant_attribute_values WHERE variant_id = 'reserved-variant'").first());
+  d1.close();
+});
+
+test("protects the dedicated variant deletion endpoint and refreshes after confirmed success", async () => {
+  const [routeSource, pageSource, storeSource] = await Promise.all([
+    readFile(new URL("../app/api/admin/product-variants/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../features/admin/admin-page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../features/admin/admin-store.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(routeSource, /getAdminAccess\("catalog\.delete"\)/);
+  assert.match(routeSource, /rejectCrossSiteMutation/);
+  assert.match(routeSource, /declaredLength > 2_048/);
+  assert.match(routeSource, /این تنوع در سفارش فعال رزرو شده است و تا آزادشدن رزرو قابل حذف نیست\./);
+  assert.match(routeSource, /status: 409/);
+  assert.match(pageSource, /فقط همین تنوع حذف می‌شود\. خود محصول، تصاویر، ویدیو، قیمت اصلی و سایر تنوع‌ها باقی می‌مانند\. ادامه می‌دهید؟/);
+  assert.match(pageSource, /can\("catalog\.delete"\)[\s\S]*?حذف تنوع/);
+  assert.match(pageSource, /await removeAdminProductVariant\(productId, variantId\);[\s\S]*?await loadAdminState\(\)/);
+  assert.doesNotMatch(pageSource, /variantDelete-/);
+  assert.match(storeSource, /fetch\("\/api\/admin\/product-variants"/);
+
+  const worker = await loadWorker();
+  const response = await worker.fetch(
+    new Request("http://localhost/api/admin/product-variants", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ productId: "product", variantId: "variant" }),
+    }),
+    {},
+    { waitUntil() {}, passThroughOnException() {} },
+  );
+  assert.equal(response.status, 401);
+});
+
+test("keeps the ten-image gallery additive, deduplicated, previewed, ordered, and rollback-safe", async () => {
+  const { MAX_PRODUCT_IMAGES, normalizeAdminState, isAdminState } = await import("../features/admin/admin-types.ts");
+  const { productImageFileIdentity } = await import("../features/admin/product-image-optimizer.ts");
+  assert.equal(MAX_PRODUCT_IMAGES, 10);
+  assert.equal(
+    productImageFileIdentity({ name: "a.webp", size: 12, lastModified: 34, type: "image/webp" }),
+    productImageFileIdentity({ name: "a.webp", size: 12, lastModified: 34, type: "image/webp" }),
+  );
+  const d1 = await createD1TestDatabase();
+  const { readStorefrontState } = await import("../db/admin-repository.ts");
+  const state = await readStorefrontState(d1.database);
+  const elevenImages = Array.from({ length: 11 }, (_, index) => `/media/products/00000000-0000-4000-8000-${String(index).padStart(12, "0")}.webp`);
+  state.products[0].imageUrls = elevenImages;
+  assert.equal(isAdminState(state), false);
+  assert.equal(normalizeAdminState(state).products[0].imageUrls.length, 10);
+
+  const [pageSource, css, repositorySource] = await Promise.all([
+    readFile(new URL("../features/admin/admin-page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../features/admin/admin.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../db/admin-repository.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(pageSource, /\[\.\.\.current, \.\.\.staged\]/);
+  assert.match(pageSource, /productImageFileIdentity\(file\)/);
+  assert.match(pageSource, /URL\.createObjectURL\(file\)/);
+  assert.match(pageSource, /URL\.revokeObjectURL\(url\)/);
+  assert.match(pageSource, /جدید \/ هنوز ذخیره نشده/);
+  assert.match(pageSource, /پاک کردن تصاویر جدید/);
+  assert.match(pageSource, /primaryProductImage[\s\S]*?imageUrls/);
+  assert.match(pageSource, /for \(const item of files\)[\s\S]*?await optimizeProductImageForWeb[\s\S]*?await uploadMedia/);
+  assert.doesNotMatch(pageSource, /Promise\.all\(files\.map/);
+  assert.match(pageSource, /cleanupUploadedMedia\(pendingUploads\)/);
+  assert.match(pageSource, /selectedProductVideo\.previewUrl/);
+  assert.match(pageSource, /ویدئوی جایگزین؛ هنوز ذخیره نشده/);
+  assert.match(css, /\.galleryEditor img[\s\S]*?object-fit: cover/);
+  assert.match(repositorySource, /slice\(0, MAX_PRODUCT_IMAGES\)/);
+  d1.close();
+});
+
+test("scopes product brands after category selection and groups catalog by category and brand", async () => {
+  const pageSource = await readFile(new URL("../features/admin/admin-page.tsx", import.meta.url), "utf8");
+  assert.ok(pageSource.indexOf("<label>دسته‌بندی") < pageSource.indexOf("<label>برند"));
+  assert.match(pageSource, /disabled=\{!productCategorySelection\}/);
+  assert.match(pageSource, /ابتدا دسته‌بندی را انتخاب کنید/);
+  assert.match(pageSource, /availableProductBrands = productCategorySelection[\s\S]*?isCategoryWithin\(productCategorySelection, brand\.categorySlug\)/);
+  assert.match(pageSource, /changedFromPersisted[\s\S]*?setProductBrandSelection\(""\)/);
+  assert.match(pageSource, /categoryPathLabel\(category\.slug\)/);
+  assert.match(pageSource, /groupedAdminProducts[\s\S]*?productCategoryGroup[\s\S]*?productBrandGroup/);
+  assert.match(pageSource, /برند قدیمی \/ تعریف‌نشده/);
+  assert.match(pageSource, /products\.length\.toLocaleString\("fa-IR"\).*محصول/);
 });
 
 test("tracks customer emails and removes store data only after orders are cleared", async () => {

@@ -30,6 +30,10 @@ const supportedFileExtensions = new Set([
 
 export const PRODUCT_IMAGE_ACCEPT = "image/*,.heic,.heif";
 
+export function productImageFileIdentity(file: Pick<File, "name" | "size" | "lastModified" | "type">) {
+  return `${file.name}\u0000${file.size}\u0000${file.lastModified}\u0000${file.type}`;
+}
+
 export function getProductImageValidationError(file: File) {
   if (file.size <= 0) return "فایل تصویر خالی است.";
   if (file.size > PRODUCT_IMAGE_SECURITY_LIMIT_BYTES) {

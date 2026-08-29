@@ -1,6 +1,7 @@
 import {
   createDefaultAdminState,
   isAdminState,
+  MAX_PRODUCT_IMAGES,
   normalizeAdminState,
   type AdminProduct,
   type AdminProductAttributeValue,
@@ -906,6 +907,59 @@ export async function deleteAdminProduct(
   return { mode: archived ? "archived" as const : "deleted" as const };
 }
 
+export async function deleteAdminProductVariant(
+  productId: string,
+  variantId: string,
+  actorEmail: string,
+  databaseOverride?: D1Database,
+) {
+  const database = databaseOverride ?? await requireDatabase();
+  const normalizedProductId = productId.trim().slice(0, 120);
+  const normalizedVariantId = variantId.trim().slice(0, 120);
+  if (!normalizedProductId || !normalizedVariantId) throw new Error("VARIANT_NOT_FOUND");
+
+  const product = await database
+    .prepare("SELECT id FROM products WHERE id = ? AND archived_at = '' LIMIT 1")
+    .bind(normalizedProductId)
+    .first<{ id: string }>();
+  if (!product) throw new Error("PRODUCT_NOT_FOUND");
+
+  const variant = await database
+    .prepare(
+      "SELECT id, reserved_quantity FROM product_variants WHERE id = ? AND product_id = ? LIMIT 1",
+    )
+    .bind(normalizedVariantId, normalizedProductId)
+    .first<{ id: string; reserved_quantity: number }>();
+  if (!variant) throw new Error("VARIANT_NOT_FOUND");
+  if (variant.reserved_quantity > 0) throw new Error("VARIANT_RESERVED");
+
+  const results = await database.batch([
+    database
+      .prepare(
+        `DELETE FROM product_variant_attribute_values
+          WHERE variant_id = ?
+            AND EXISTS (
+              SELECT 1 FROM product_variants
+               WHERE id = ? AND product_id = ? AND reserved_quantity = 0
+            )`,
+      )
+      .bind(normalizedVariantId, normalizedVariantId, normalizedProductId),
+    database
+      .prepare(
+        "DELETE FROM product_variants WHERE id = ? AND product_id = ? AND reserved_quantity = 0",
+      )
+      .bind(normalizedVariantId, normalizedProductId),
+    database
+      .prepare(
+        `INSERT INTO admin_audit_log (actor_email, action, subject_id)
+         SELECT ?, 'product.variant-deleted', ? WHERE changes() > 0`,
+      )
+      .bind(actorEmail, normalizedVariantId),
+  ]);
+  if (Number(results[1]?.meta?.changes ?? 0) !== 1) throw new Error("VARIANT_RESERVED");
+  return { deleted: true as const };
+}
+
 async function enforceSellerOfferIntegrity(
   _database: D1Database,
   state: AdminState,
@@ -1384,7 +1438,7 @@ function parseProductImages(value: string) {
     if (Array.isArray(parsed)) {
       return parsed
         .filter((item): item is string => typeof item === "string")
-        .slice(0, 8);
+        .slice(0, MAX_PRODUCT_IMAGES);
     }
   } catch {
     // Older product rows contain one plain image URL.

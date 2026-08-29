@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Container } from "@/components/ui";
 import type { CatalogCategory } from "@/features/catalog/catalog-gateway";
 import {
@@ -40,17 +40,20 @@ import {
   createDefaultAdminState,
   delegableAdminPermissions,
   loadAdminState,
+  MAX_PRODUCT_IMAGES,
   normalizeAttributeCode,
   normalizeAdminHref,
   normalizeSlug,
   stableBrandSlug,
   removeAdminProduct,
+  removeAdminProductVariant,
   saveAdminState,
   type AdminCategory,
   type AdminAttributeDataType,
   type AdminBrand,
   type AdminProductDiscountType,
   type AdminProductPlacement,
+  type AdminProduct,
   type AdminPermission,
   type AdminRole,
   type AdminSectionKey,
@@ -93,11 +96,16 @@ import { PaymentGatewaySettings } from "./payment-gateway-settings";
 import {
   getProductImageValidationError,
   optimizeProductImageForWeb,
+  productImageFileIdentity,
   PRODUCT_IMAGE_ACCEPT,
 } from "./product-image-optimizer";
 
 type AdminTab = "overview" | "content" | "categories" | "banners" | "products" | "orders" | "customers" | "reports" | "sellers";
 type SaveStatus = "loading" | "saved" | "saving" | "error";
+type StagedProductImage = { key: string; file: File; previewUrl: string };
+type StagedProductVideo = { file: File; previewUrl: string };
+const VARIANT_DELETE_CONFIRMATION =
+  "فقط همین تنوع حذف می‌شود. خود محصول، تصاویر، ویدیو، قیمت اصلی و سایر تنوع‌ها باقی می‌مانند. ادامه می‌دهید؟";
 const nextOrderStatuses: Record<OrderStatus, readonly OrderStatus[]> = {
   new: ["confirmed", "cancelled"],
   confirmed: ["packing", "cancelled"],
@@ -251,9 +259,16 @@ export function AdminPage({
   const [newBrandCategorySlug, setNewBrandCategorySlug] = useState("");
   const [editingMessageId, setEditingMessageId] = useState("");
   const [editingBannerId, setEditingBannerId] = useState("");
-  const [selectedProductImages, setSelectedProductImages] = useState<File[]>([]);
-  const [selectedProductVideo, setSelectedProductVideo] = useState<File | null>(null);
+  const [selectedProductImages, setSelectedProductImages] = useState<StagedProductImage[]>([]);
+  const [selectedProductVideo, setSelectedProductVideo] = useState<StagedProductVideo | null>(null);
+  const [removedProductImages, setRemovedProductImages] = useState<string[]>([]);
+  const [primaryProductImage, setPrimaryProductImage] = useState("");
+  const [removeExistingProductVideo, setRemoveExistingProductVideo] = useState(false);
+  const [productCategorySelection, setProductCategorySelection] = useState("");
+  const [productBrandSelection, setProductBrandSelection] = useState("");
+  const productPreviewUrls = useRef(new Set<string>());
   const [productMediaInputVersion, setProductMediaInputVersion] = useState(0);
+  const [productEditorVersion, setProductEditorVersion] = useState(0);
   const [productBusy, setProductBusy] = useState(false);
   const [brandingBusy, setBrandingBusy] = useState(false);
   const [bannerBusy, setBannerBusy] = useState(false);
@@ -316,6 +331,11 @@ export function AdminPage({
       active = false;
     };
   }, [permissions]);
+
+  useEffect(() => () => {
+    for (const url of productPreviewUrls.current) URL.revokeObjectURL(url);
+    productPreviewUrls.current.clear();
+  }, []);
 
   useEffect(() => {
     if (!permissions.includes("backup.read")) return;
@@ -470,6 +490,31 @@ export function AdminPage({
   const activeFilterChildren = allManagedCategories.filter(
     (category) => category.parentSlug === activeProductCategoryFilter,
   );
+  const availableProductBrands = productCategorySelection
+    ? state.brands.filter((brand) =>
+        isCategoryWithin(productCategorySelection, brand.categorySlug),
+      )
+    : [];
+  const groupedAdminProducts = Array.from(
+    filteredAdminProducts.reduce((categoriesBySlug, product) => {
+      const categoryProducts = categoriesBySlug.get(product.category) ?? [];
+      categoryProducts.push(product);
+      categoriesBySlug.set(product.category, categoryProducts);
+      return categoriesBySlug;
+    }, new Map<string, AdminProduct[]>()),
+  )
+    .sort(([left], [right]) => categoryPathLabel(left).localeCompare(categoryPathLabel(right), "fa"))
+    .map(([categorySlug, products]) => ({
+      categorySlug,
+      brands: Array.from(products.reduce((brandsByName, product) => {
+        const managed = state.brands.find((brand) => brand.name === product.brand);
+        const brandKey = managed ? managed.name : "برند قدیمی / تعریف‌نشده";
+        const brandProducts = brandsByName.get(brandKey) ?? [];
+        brandProducts.push(product);
+        brandsByName.set(brandKey, brandProducts);
+        return brandsByName;
+      }, new Map<string, AdminProduct[]>())).sort(([left], [right]) => left.localeCompare(right, "fa")),
+    }));
 
   async function commit(next: AdminState) {
     setSaveStatus("saving");
@@ -488,15 +533,30 @@ export function AdminPage({
     }
   }
 
+  function revokeProductPreview(url: string) {
+    if (!productPreviewUrls.current.delete(url)) return;
+    URL.revokeObjectURL(url);
+  }
+
   function clearSelectedProductMedia() {
+    for (const url of productPreviewUrls.current) URL.revokeObjectURL(url);
+    productPreviewUrls.current.clear();
     setSelectedProductImages([]);
     setSelectedProductVideo(null);
+    setRemovedProductImages([]);
+    setPrimaryProductImage("");
+    setRemoveExistingProductVideo(false);
     setProductMediaInputVersion((version) => version + 1);
   }
 
   function beginProductEdit(productId: string) {
+    const product = state.products.find((item) => item.id === productId);
     clearSelectedProductMedia();
     setEditingProductId(productId);
+    setProductEditorVersion((version) => version + 1);
+    setPrimaryProductImage(product?.imageUrls[0] ?? "");
+    setProductCategorySelection(product?.category ?? "");
+    setProductBrandSelection(product?.brand ?? "");
     requestAnimationFrame(() => {
       document.getElementById("product-editor")?.scrollIntoView({
         behavior: "smooth",
@@ -508,6 +568,8 @@ export function AdminPage({
   function cancelProductEdit() {
     clearSelectedProductMedia();
     setEditingProductId("");
+    setProductCategorySelection("");
+    setProductBrandSelection("");
   }
 
   function beginCategoryEdit(categoryId: string) {
@@ -579,6 +641,30 @@ export function AdminPage({
     } catch (error) {
       setSaveStatus("error");
       setStatusMessage(error instanceof Error ? error.message : "حذف محصول ممکن نشد.");
+    } finally {
+      setProductBusy(false);
+    }
+  }
+
+  async function deleteProductVariant(productId: string, variantId: string) {
+    if (!can("catalog.delete") || productBusy) return;
+    if (!window.confirm(VARIANT_DELETE_CONFIRMATION)) return;
+    setProductBusy(true);
+    setSaveStatus("saving");
+    setStatusMessage("");
+    try {
+      await removeAdminProductVariant(productId, variantId);
+      const refreshed = await loadAdminState();
+      setState(refreshed);
+      const refreshedProduct = refreshed.products.find((product) => product.id === productId);
+      setEditingProductId(productId);
+      setProductEditorVersion((version) => version + 1);
+      setPrimaryProductImage(refreshedProduct?.imageUrls[0] ?? "");
+      setSaveStatus("saved");
+      setStatusMessage("تنوع انتخاب‌شده حذف شد؛ سایر اطلاعات محصول تغییری نکرد.");
+    } catch (error) {
+      setSaveStatus("error");
+      setStatusMessage(error instanceof Error ? error.message : "حذف تنوع ممکن نشد.");
     } finally {
       setProductBusy(false);
     }
@@ -1124,8 +1210,8 @@ export function AdminPage({
       ? "rial"
       : "toman";
     const stockQuantity = Number(data.get("stockQuantity"));
-    const files = selectedProductImages.filter((file) => file.size > 0);
-    const videoFile = selectedProductVideo;
+    const files = selectedProductImages.filter((item) => item.file.size > 0);
+    const videoFile = selectedProductVideo?.file ?? null;
     const pendingUploads: { url: string; cleanupToken: string }[] = [];
     const amazingEnabled = data.get("amazingEnabled") === "on";
     const amazingStartsAt = calendarDateTimeToIso(
@@ -1138,9 +1224,7 @@ export function AdminPage({
       String(data.get("amazingEndsTime") ?? ""),
       calendarMode,
     );
-    const removedImages = new Set(
-      data.getAll("removeImage").map((value) => String(value)),
-    );
+    const removedImages = new Set(removedProductImages);
     if (
       !title ||
       !slug ||
@@ -1168,7 +1252,16 @@ export function AdminPage({
       const managedBrand = state.brands.find(
         (item) => item.name.trim().toLocaleLowerCase("fa") === brand.toLocaleLowerCase("fa"),
       );
-      if (managedBrand && !isCategoryWithin(category, managedBrand.categorySlug)) {
+      const unchangedLegacyBrand = Boolean(
+        editingProduct &&
+        editingProduct.category === category &&
+        editingProduct.brand === brand,
+      );
+      if (
+        managedBrand &&
+        !isCategoryWithin(category, managedBrand.categorySlug) &&
+        !unchangedLegacyBrand
+      ) {
         throw new Error(
           `برند «${managedBrand.name}» فقط در ${categoryPathLabel(managedBrand.categorySlug)} قابل انتخاب است.`,
         );
@@ -1209,28 +1302,29 @@ export function AdminPage({
       ) {
         throw new Error("برای پیشنهاد شگفت‌انگیز، شروع و پایان معتبر وارد کنید.");
       }
-      let preservedImages = (editingProduct?.imageUrls ?? []).filter(
+      const preservedImages = (editingProduct?.imageUrls ?? []).filter(
         (url) => !removedImages.has(url),
       );
-      const primaryImage = String(data.get("primaryImage") ?? "");
-      if (primaryImage && preservedImages.includes(primaryImage)) {
-        preservedImages = [
-          primaryImage,
-          ...preservedImages.filter((url) => url !== primaryImage),
-        ];
+      if (preservedImages.length + files.length > MAX_PRODUCT_IMAGES) {
+        throw new Error("برای هر محصول حداکثر ۱۰ تصویر مجاز است.");
       }
-      if (preservedImages.length + files.length > 8) {
-        throw new Error("برای هر محصول حداکثر ۸ تصویر مجاز است.");
-      }
-      const uploadedImages: string[] = [];
-      for (const file of files) {
-        const optimizedFile = await optimizeProductImageForWeb(file);
+      const uploadedImages: { key: string; url: string }[] = [];
+      for (const item of files) {
+        const optimizedFile = await optimizeProductImageForWeb(item.file);
         const uploaded = await uploadMedia(optimizedFile, "products");
         pendingUploads.push(uploaded);
-        uploadedImages.push(uploaded.url);
+        uploadedImages.push({ key: item.key, url: uploaded.url });
       }
-      const imageUrls = [...preservedImages, ...uploadedImages];
-      let videoUrl = data.get("removeVideo") ? "" : editingProduct?.videoUrl ?? "";
+      const imageEntries = [
+        ...preservedImages.map((url) => ({ key: url, url })),
+        ...uploadedImages.map((item) => ({ key: `new:${item.key}`, url: item.url })),
+      ];
+      const selectedPrimary = imageEntries.find((item) => item.key === primaryProductImage);
+      const primaryEntry = selectedPrimary ?? imageEntries[0];
+      const imageUrls = primaryEntry
+        ? [primaryEntry.url, ...imageEntries.filter((item) => item !== primaryEntry).map((item) => item.url)]
+        : [];
+      let videoUrl = removeExistingProductVideo ? "" : editingProduct?.videoUrl ?? "";
       if (videoFile instanceof File && videoFile.size > 0) {
         const uploaded = await uploadMedia(videoFile, "product-video");
         pendingUploads.push(uploaded);
@@ -1314,9 +1408,7 @@ export function AdminPage({
         });
       }
 
-      const variants = (editingProduct?.variants ?? [])
-        .filter((variant) => data.get(`variantDelete-${variant.id}`) !== "on")
-        .map((variant) => ({
+      const variants = (editingProduct?.variants ?? []).map((variant) => ({
           ...variant,
           title: String(data.get(`variantTitle-${variant.id}`) ?? variant.title).trim().slice(0, 120),
           sku: String(data.get(`variantSku-${variant.id}`) ?? variant.sku).trim().toUpperCase().slice(0, 80),
@@ -1453,6 +1545,10 @@ export function AdminPage({
       form.reset();
       clearSelectedProductMedia();
       setEditingProductId(nextProduct.id);
+      setProductEditorVersion((version) => version + 1);
+      setPrimaryProductImage(nextProduct.imageUrls[0] ?? "");
+      setProductCategorySelection(nextProduct.category);
+      setProductBrandSelection(nextProduct.brand);
       setLastSavedProductSlug(nextProduct.slug);
     } catch (error) {
       const cleanupComplete = await cleanupUploadedMedia(pendingUploads);
@@ -1738,7 +1834,7 @@ export function AdminPage({
         </Container>
       </header>
       <Container size="wide">
-        <div className={styles.statusBar} data-status={saveStatus} role="status">
+        <div className={styles.statusBar} data-status={saveStatus} data-compact={tab === "products"} role="status">
           <span>
             {saveStatus === "loading"
               ? "در حال اتصال به پایگاه‌داده…"
@@ -1751,7 +1847,7 @@ export function AdminPage({
           <a href="/">مشاهده فروشگاه</a>
         </div>
 
-        <div className={styles.layout}>
+        <div className={styles.layout} data-products={tab === "products"}>
           <nav className={styles.sidebar} aria-label="بخش‌های مدیریت">
             {(
               [
@@ -2266,30 +2362,54 @@ export function AdminPage({
             ) : null}
 
             {tab === "products" ? (
-              <section aria-labelledby="products-title">
+              <section className={styles.productSection} aria-labelledby="products-title">
                 <Heading kicker="Catalog" id="products-title">مدیریت محصولات</Heading>
                 <div className={styles.productWorkspace}>
-                  <form id="product-editor" key={editingProduct?.id ?? "new"} className={styles.productForm} onSubmit={addProduct}>
+                  <form id="product-editor" key={`${editingProduct?.id ?? "new"}-${productEditorVersion}`} className={styles.productForm} onSubmit={addProduct}>
                     <h2>{editingProduct ? "ویرایش محصول" : "محصول جدید"}</h2>
                     <label>عنوان فارسی<input name="title" required maxLength={180} defaultValue={editingProduct?.title} /></label>
                     <label>عنوان انگلیسی (اختیاری)<input name="englishTitle" maxLength={180} dir="ltr" defaultValue={editingProduct?.englishTitle ?? ""} /></label>
                     <label>نامک انگلیسی<input name="slug" required pattern="[A-Za-z0-9-]+" dir="ltr" defaultValue={editingProduct?.slug} /></label>
                     <label>کد کالا (SKU)<input name="sku" required maxLength={80} dir="ltr" defaultValue={editingProduct?.sku} /></label>
-                    <label>برند
-                      <select name="brand" required defaultValue={editingProduct?.brand ?? ""}>
-                        <option value="" disabled>ابتدا برند را در بخش «دسته‌ها و برندها» تعریف کنید</option>
-                        {editingProduct?.brand && !state.brands.some((brand) => brand.name === editingProduct.brand) ? (
-                          <option value={editingProduct.brand}>{editingProduct.brand} · برند قدیمی</option>
-                        ) : null}
-                        {state.brands.map((brand) => (
-                          <option key={brand.id} value={brand.name}>{brand.name} · {categoryPathLabel(brand.categorySlug)}</option>
-                        ))}
-                      </select>
-                    </label>
                     <label>دسته‌بندی
-                      <select name="category" required defaultValue={editingProduct?.category ?? ""}>
+                      <select
+                        name="category"
+                        required
+                        value={productCategorySelection}
+                        onChange={(event) => {
+                          const nextCategory = event.currentTarget.value;
+                          const selectedManagedBrand = state.brands.find(
+                            (brand) => brand.name === productBrandSelection,
+                          );
+                          const changedFromPersisted = nextCategory !== editingProduct?.category;
+                          if (
+                            (selectedManagedBrand && !isCategoryWithin(nextCategory, selectedManagedBrand.categorySlug)) ||
+                            (!selectedManagedBrand && productBrandSelection && changedFromPersisted)
+                          ) {
+                            setProductBrandSelection("");
+                          }
+                          setProductCategorySelection(nextCategory);
+                        }}
+                      >
                         <option value="" disabled>انتخاب کنید</option>
                         {selectableCategories.map((category) => <option key={category.slug} value={category.slug}>{categoryPathLabel(category.slug)}</option>)}
+                      </select>
+                    </label>
+                    <label>برند
+                      <select
+                        name="brand"
+                        required
+                        disabled={!productCategorySelection}
+                        value={productBrandSelection}
+                        onChange={(event) => setProductBrandSelection(event.currentTarget.value)}
+                      >
+                        <option value="" disabled>{productCategorySelection ? "برند مرتبط را انتخاب کنید" : "ابتدا دسته‌بندی را انتخاب کنید"}</option>
+                        {editingProduct?.brand && !availableProductBrands.some((brand) => brand.name === editingProduct.brand) && productCategorySelection === editingProduct.category ? (
+                          <option value={editingProduct.brand}>{editingProduct.brand} · برند قدیمی</option>
+                        ) : null}
+                        {availableProductBrands.map((brand) => (
+                          <option key={brand.id} value={brand.name}>{brand.name} · {categoryPathLabel(brand.categorySlug)}</option>
+                        ))}
                       </select>
                     </label>
                     <label>جایگاه نمایش
@@ -2366,7 +2486,16 @@ export function AdminPage({
                           <label>قیمت قبل تخفیف<input name={`variantCompareAt-${variant.id}`} type="number" min="0" defaultValue={rialToPriceInput(variant.compareAtPriceMinor, "toman")} /></label>
                           <label>موجودی<input name={`variantStock-${variant.id}`} type="number" min={variant.reservedQuantity} max="1000000" defaultValue={variant.stockQuantity} /></label>
                           <label><input name={`variantVisible-${variant.id}`} type="checkbox" defaultChecked={variant.visible} /> نمایش</label>
-                          <label><input name={`variantDelete-${variant.id}`} type="checkbox" /> بایگانی تنوع</label>
+                          {can("catalog.delete") ? (
+                            <button
+                              className={styles.dangerButton}
+                              type="button"
+                              disabled={productBusy}
+                              onClick={() => void deleteProductVariant(editingProduct!.id, variant.id)}
+                            >
+                              حذف تنوع
+                            </button>
+                          ) : null}
                           <small>رزروشده: {variant.reservedQuantity.toLocaleString("fa-IR")}</small>
                           {(variant.attributes ?? []).map((attribute) => (
                             <label key={attribute.id}>{attribute.label} <small dir="ltr">{attribute.code}</small>
@@ -2431,16 +2560,48 @@ export function AdminPage({
                       <small>تاریخ‌ها با تقویم انتخابی مالک و ساعت ایران نمایش داده می‌شوند؛ تایمر پس از پایان خودکار غیرفعال خواهد شد.</small>
                     </fieldset>
                     <label>موجودی کل<input name="stockQuantity" type="number" min={editingProduct?.reservedQuantity ?? 0} max="1000000" step="1" required defaultValue={editingProduct?.stockQuantity ?? 0} /></label>
-                    {editingProduct?.imageUrls.length ? (
+                    {(editingProduct?.imageUrls.length ?? 0) + selectedProductImages.length > 0 ? (
                       <fieldset className={styles.galleryEditor}>
-                        <legend>تصاویر فعلی</legend>
-                        <p>تصویری که «عکس اصلی» دارد، در کارت محصول نمایش داده می‌شود.</p>
+                        <legend>گالری محصول</legend>
+                        <p>از میان تصاویر فعلی و جدید دقیقاً یک عکس اصلی انتخاب کنید. حذف‌ها فقط پس از ذخیره اعمال می‌شوند.</p>
                         <div>
-                          {editingProduct.imageUrls.map((url, index) => (
-                            <article key={url}>
-                              <img src={url} alt={`${editingProduct.title} - ${index + 1}`} />
-                              <label><input type="radio" name="primaryImage" value={url} defaultChecked={index === 0} /> عکس اصلی</label>
-                              <label><input type="checkbox" name="removeImage" value={url} /> حذف</label>
+                          {(editingProduct?.imageUrls ?? []).map((url, index) => {
+                            const removed = removedProductImages.includes(url);
+                            return (
+                            <article key={url} data-removed={removed}>
+                              <img src={url} alt={`${editingProduct?.title ?? "محصول"} - ${index + 1}`} />
+                              <small>ذخیره‌شده</small>
+                              <label><input type="radio" name="primaryImage" value={url} checked={primaryProductImage === url} disabled={removed} onChange={() => setPrimaryProductImage(url)} /> عکس اصلی</label>
+                              <label><input type="checkbox" checked={removed} onChange={(event) => {
+                                const willRemove = event.currentTarget.checked;
+                                const nextRemoved = willRemove
+                                  ? [...removedProductImages, url]
+                                  : removedProductImages.filter((item) => item !== url);
+                                setRemovedProductImages(nextRemoved);
+                                if (willRemove && primaryProductImage === url) {
+                                  const fallbackExisting = editingProduct?.imageUrls.find((item) => item !== url && !nextRemoved.includes(item));
+                                  setPrimaryProductImage(fallbackExisting ?? (selectedProductImages[0] ? `new:${selectedProductImages[0].key}` : ""));
+                                } else if (!willRemove && !primaryProductImage) {
+                                  setPrimaryProductImage(url);
+                                }
+                              }} /> حذف هنگام ذخیره</label>
+                            </article>
+                          )})}
+                          {selectedProductImages.map((item) => (
+                            <article key={item.key}>
+                              <img src={item.previewUrl} alt={item.file.name} />
+                              <strong>جدید / هنوز ذخیره نشده</strong>
+                              <small>{item.file.name} · {(item.file.size / 1024 / 1024).toLocaleString("fa-IR", { maximumFractionDigits: 2 })} مگابایت</small>
+                              <label><input type="radio" name="primaryImage" value={`new:${item.key}`} checked={primaryProductImage === `new:${item.key}`} onChange={() => setPrimaryProductImage(`new:${item.key}`)} /> عکس اصلی</label>
+                              <button type="button" onClick={() => {
+                                revokeProductPreview(item.previewUrl);
+                                const remaining = selectedProductImages.filter((selected) => selected.key !== item.key);
+                                setSelectedProductImages(remaining);
+                                if (primaryProductImage === `new:${item.key}`) {
+                                  const fallbackExisting = editingProduct?.imageUrls.find((url) => !removedProductImages.includes(url));
+                                  setPrimaryProductImage(fallbackExisting ?? (remaining[0] ? `new:${remaining[0].key}` : ""));
+                                }
+                              }}>برداشتن از انتخاب</button>
                             </article>
                           ))}
                         </div>
@@ -2459,39 +2620,52 @@ export function AdminPage({
                           if (invalidFile) {
                             setSaveStatus("error");
                             setStatusMessage(getProductImageValidationError(invalidFile));
-                            setSelectedProductImages([]);
                             event.currentTarget.value = "";
                             return;
                           }
-                          setSelectedProductImages(files);
+                          const selectedKeys = new Set(selectedProductImages.map((item) => item.key));
+                          const uniqueFiles = files.filter((file) => {
+                            const key = productImageFileIdentity(file);
+                            if (selectedKeys.has(key)) return false;
+                            selectedKeys.add(key);
+                            return true;
+                          });
+                          const remainingExistingCount = (editingProduct?.imageUrls ?? []).filter(
+                            (url) => !removedProductImages.includes(url),
+                          ).length;
+                          if (remainingExistingCount + selectedProductImages.length + uniqueFiles.length > MAX_PRODUCT_IMAGES) {
+                            setSaveStatus("error");
+                            setStatusMessage("برای هر محصول حداکثر ۱۰ تصویر مجاز است.");
+                            event.currentTarget.value = "";
+                            return;
+                          }
+                          const staged = uniqueFiles.map((file) => {
+                            const previewUrl = URL.createObjectURL(file);
+                            productPreviewUrls.current.add(previewUrl);
+                            return { key: productImageFileIdentity(file), file, previewUrl };
+                          });
+                          setSelectedProductImages((current) => [...current, ...staged]);
+                          if (!primaryProductImage && staged[0]) setPrimaryProductImage(`new:${staged[0].key}`);
+                          setSaveStatus("saved");
+                          setStatusMessage("");
+                          event.currentTarget.value = "";
                         }}
                       />
                     </label>
-                    <small>JPG، PNG، WebP و AVIF مستقیماً پشتیبانی می‌شوند؛ HEIC/HEIF فقط در مرورگر سازگار پیش از ارسال به WebP یا JPG تبدیل می‌شود. اولین تصویر، عکس اصلی محصول است.</small>
+                    <small>تا ۱۰ تصویر؛ انتخاب‌های بعدی به گالری اضافه می‌شوند. JPG، PNG، WebP و AVIF مستقیماً پشتیبانی می‌شوند؛ HEIC/HEIF در مرورگر سازگار تبدیل می‌شود.</small>
                     {selectedProductImages.length ? (
-                      <div className={styles.selectedMediaList} aria-live="polite">
-                        <strong>تصاویر انتخاب‌شده برای بارگذاری</strong>
-                        {selectedProductImages.map((file, index) => (
-                          <div key={`${file.name}-${file.lastModified}-${index}`}>
-                            <span>{file.name}<small>{(file.size / 1024 / 1024).toLocaleString("fa-IR", { maximumFractionDigits: 2 })} مگابایت</small></span>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedProductImages((files) => files.filter((_, itemIndex) => itemIndex !== index))}
-                            >
-                              برداشتن از انتخاب
-                            </button>
-                          </div>
-                        ))}
-                        <button type="button" onClick={() => {
+                      <button type="button" onClick={() => {
+                          for (const item of selectedProductImages) revokeProductPreview(item.previewUrl);
                           setSelectedProductImages([]);
+                          const fallbackExisting = editingProduct?.imageUrls.find((url) => !removedProductImages.includes(url));
+                          if (primaryProductImage.startsWith("new:")) setPrimaryProductImage(fallbackExisting ?? "");
                           setProductMediaInputVersion((version) => version + 1);
-                        }}>برداشتن همهٔ تصاویر</button>
-                      </div>
+                        }}>پاک کردن تصاویر جدید</button>
                     ) : null}
                     {editingProduct?.videoUrl ? (
                       <div className={styles.videoEditor}>
                         <video src={editingProduct.videoUrl} controls preload="metadata" />
-                        <label><input name="removeVideo" type="checkbox" /> حذف ویدئوی فعلی</label>
+                        <label><input type="checkbox" checked={removeExistingProductVideo} onChange={(event) => setRemoveExistingProductVideo(event.currentTarget.checked)} /> حذف ویدئوی فعلی هنگام ذخیره</label>
                       </div>
                     ) : null}
                     <label>
@@ -2500,16 +2674,32 @@ export function AdminPage({
                         key={`product-video-${productMediaInputVersion}`}
                         type="file"
                         accept="video/mp4,video/webm"
-                        onChange={(event) => setSelectedProductVideo(event.currentTarget.files?.[0] ?? null)}
+                        onChange={(event) => {
+                          const file = event.currentTarget.files?.[0];
+                          if (!file) return;
+                          if (file.size <= 0 || file.size > 25_000_000 || !new Set(["video/mp4", "video/webm"]).has(file.type)) {
+                            setSaveStatus("error");
+                            setStatusMessage("ویدئو باید MP4 یا WebM و حداکثر ۲۵ مگابایت باشد.");
+                            event.currentTarget.value = "";
+                            return;
+                          }
+                          if (selectedProductVideo) revokeProductPreview(selectedProductVideo.previewUrl);
+                          const previewUrl = URL.createObjectURL(file);
+                          productPreviewUrls.current.add(previewUrl);
+                          setSelectedProductVideo({ file, previewUrl });
+                          event.currentTarget.value = "";
+                        }}
                       />
                     </label>
                     <small>یک کلیپ MP4 یا WebM تا ۲۵ مگابایت؛ بهتر است کوتاه و بدون اطلاعات شخصی باشد.</small>
                     {selectedProductVideo ? (
                       <div className={styles.selectedMediaList} aria-live="polite">
-                        <strong>ویدئوی انتخاب‌شده برای بارگذاری</strong>
+                        <strong>{editingProduct?.videoUrl ? "ویدئوی جایگزین؛ هنوز ذخیره نشده" : "ویدئوی جدید؛ هنوز ذخیره نشده"}</strong>
+                        <video src={selectedProductVideo.previewUrl} controls preload="metadata" />
                         <div>
-                          <span>{selectedProductVideo.name}<small>{(selectedProductVideo.size / 1024 / 1024).toLocaleString("fa-IR", { maximumFractionDigits: 2 })} مگابایت</small></span>
+                          <span>{selectedProductVideo.file.name}<small>{(selectedProductVideo.file.size / 1024 / 1024).toLocaleString("fa-IR", { maximumFractionDigits: 2 })} مگابایت</small></span>
                           <button type="button" onClick={() => {
+                            revokeProductPreview(selectedProductVideo.previewUrl);
                             setSelectedProductVideo(null);
                             setProductMediaInputVersion((version) => version + 1);
                           }}>برداشتن از انتخاب</button>
@@ -2539,7 +2729,7 @@ export function AdminPage({
                     {activeFilterChildren.length > 0 ? (
                       <div className={styles.productSubcategoryFilter}>
                         {activeFilterChildren.map((category) => (
-                          <button key={category.slug} type="button" onClick={() => setProductCategoryFilter(category.slug)}>
+                          <button key={category.slug} type="button" data-active={activeProductCategoryFilter === category.slug} onClick={() => setProductCategoryFilter(category.slug)}>
                             {category.name}
                           </button>
                         ))}
@@ -2559,34 +2749,44 @@ export function AdminPage({
                       {categoryPathLabel(activeProductCategoryFilter)} · {filteredAdminProducts.length.toLocaleString("fa-IR")} محصول
                     </p>
                     {filteredAdminProducts.length === 0 ? <p>در این دسته هنوز محصولی ثبت نشده است.</p> : null}
-                    {filteredAdminProducts.map((product) => (
-                      <article key={product.id}>
-                        {product.imageUrls[0] ? <img src={product.imageUrls[0]} alt={product.title} /> : <span>بدون تصویر</span>}
-                        <div><strong>{product.title}</strong><small>{product.brand} · {product.category} · SKU: {product.sku}</small><small>{formatAdminMoney(product.priceMinor, product.currency)} · {product.imageUrls.length.toLocaleString("fa-IR")} تصویر{product.videoUrl ? " · دارای ویدئو" : ""}{product.amazingEnabled ? " · زمان‌بندی شگفت‌انگیز" : ""} · موجود: {(product.stockQuantity - product.reservedQuantity).toLocaleString("fa-IR")} · رزرو: {product.reservedQuantity.toLocaleString("fa-IR")}</small>{product.amazingEnabled ? <small>شگفت‌انگیز: {formatCalendarDateTime(product.amazingStartsAt, calendarMode)} تا {formatCalendarDateTime(product.amazingEndsAt, calendarMode)}</small> : null}</div>
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={product.visible}
-                            onChange={() => void commit({
-                              ...state,
-                              products: state.products.map((item) => item.id === product.id ? { ...item, visible: !item.visible } : item),
-                            })}
-                          />
-                          نمایش
-                        </label>
-                        <button type="button" onClick={() => beginProductEdit(product.id)}>ویرایش</button>
-                        <a className={styles.listPreviewLink} href={`/product/${product.slug}`} target="_blank" rel="noreferrer">مشاهده</a>
-                        {can("catalog.delete") ? (
-                          <button
-                            className={styles.dangerButton}
-                            type="button"
-                            disabled={productBusy}
-                            onClick={() => void deleteProduct(product.id, product.title)}
-                          >
-                            حذف
-                          </button>
-                        ) : null}
-                      </article>
+                    {groupedAdminProducts.map((categoryGroup) => (
+                      <section key={categoryGroup.categorySlug} className={styles.productCategoryGroup}>
+                        <h3>{categoryPathLabel(categoryGroup.categorySlug)}</h3>
+                        {categoryGroup.brands.map(([brandLabel, products]) => (
+                          <section key={brandLabel} className={styles.productBrandGroup}>
+                            <h4>{brandLabel} <small>{products.length.toLocaleString("fa-IR")} محصول</small></h4>
+                            {products.map((product) => (
+                              <article key={product.id}>
+                                {product.imageUrls[0] ? <img src={product.imageUrls[0]} alt={product.title} /> : <span>بدون تصویر</span>}
+                                <div><strong>{product.title}</strong><small>{product.brand} · {categoryPathLabel(product.category)} · SKU: {product.sku}</small><small>{formatAdminMoney(product.priceMinor, product.currency)} · {product.imageUrls.length.toLocaleString("fa-IR")} تصویر{product.videoUrl ? " · دارای ویدئو" : ""}{product.amazingEnabled ? " · زمان‌بندی شگفت‌انگیز" : ""} · موجود: {(product.stockQuantity - product.reservedQuantity).toLocaleString("fa-IR")} · رزرو: {product.reservedQuantity.toLocaleString("fa-IR")}</small>{product.amazingEnabled ? <small>شگفت‌انگیز: {formatCalendarDateTime(product.amazingStartsAt, calendarMode)} تا {formatCalendarDateTime(product.amazingEndsAt, calendarMode)}</small> : null}</div>
+                                <label>
+                                  <input
+                                    type="checkbox"
+                                    checked={product.visible}
+                                    onChange={() => void commit({
+                                      ...state,
+                                      products: state.products.map((item) => item.id === product.id ? { ...item, visible: !item.visible } : item),
+                                    })}
+                                  />
+                                  نمایش
+                                </label>
+                                <button type="button" onClick={() => beginProductEdit(product.id)}>ویرایش</button>
+                                <a className={styles.listPreviewLink} href={`/product/${product.slug}`} target="_blank" rel="noreferrer">مشاهده</a>
+                                {can("catalog.delete") ? (
+                                  <button
+                                    className={styles.dangerButton}
+                                    type="button"
+                                    disabled={productBusy}
+                                    onClick={() => void deleteProduct(product.id, product.title)}
+                                  >
+                                    حذف
+                                  </button>
+                                ) : null}
+                              </article>
+                            ))}
+                          </section>
+                        ))}
+                      </section>
                     ))}
                   </div>
                 </div>

@@ -6,6 +6,7 @@ export {
   createAdminId,
   createDefaultAdminState,
   delegableAdminPermissions,
+  MAX_PRODUCT_IMAGES,
   getActiveHeaderMessage,
   getActiveHeaderMessages,
   getActiveBanners,
@@ -70,6 +71,18 @@ export async function removeAdminProduct(id: string) {
   const payload = await response.json() as { mode?: "deleted" | "archived"; error?: string };
   if (!response.ok || !payload.mode) throw new Error(payload.error || "حذف محصول ممکن نشد.");
   return payload.mode;
+}
+
+export async function removeAdminProductVariant(productId: string, variantId: string) {
+  const response = await fetch("/api/admin/product-variants", {
+    method: "DELETE",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ productId, variantId }),
+  });
+  const payload = await response.json() as { deleted?: boolean; error?: string };
+  if (!response.ok || payload.deleted !== true) {
+    throw new Error(payload.error || "حذف تنوع ممکن نشد.");
+  }
 }
 
 async function requestState(path: string) {
