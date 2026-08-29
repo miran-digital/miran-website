@@ -3484,7 +3484,7 @@ test("deletes only an unreserved owned variant and preserves product, sibling, o
   assert.ok(await d1.database.prepare("SELECT id FROM seller_offers WHERE id = 'preserved-offer'").first());
   assert.ok(await d1.database.prepare("SELECT id FROM order_items WHERE id = 'variant-history-item' AND variant_id = 'delete-variant'").first());
   assert.deepEqual(
-    await d1.database.prepare("SELECT id, title, slug, price_minor, image_url, video_url FROM products WHERE id = ?").bind(product.id).first(),
+    { ...await d1.database.prepare("SELECT id, title, slug, price_minor, image_url, video_url FROM products WHERE id = ?").bind(product.id).first() },
     snapshot,
   );
   assert.equal((await d1.database.prepare(
