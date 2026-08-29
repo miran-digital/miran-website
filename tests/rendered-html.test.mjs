@@ -991,7 +991,8 @@ test("keeps admin chrome separate from the storefront and within the worker PBKD
   assert.doesNotMatch(adminSource, /مرکز مدیریت|ایمیل حساب ChatGPT|userDisplayName|userEmail/);
   assert.match(storefrontCss, /body:has\(\.admin-page\) > \.site-header/);
   assert.match(adminCss, /\.topbar\s*\{[\s\S]*position: sticky;[\s\S]*top: 0;/);
-  assert.match(adminCss, /\.sidebar\s*\{[\s\S]*position: sticky;[\s\S]*top: calc\(4\.5rem/);
+  assert.match(adminCss, /--admin-topbar-height:\s*3\.5rem/);
+  assert.match(adminCss, /@media \(min-width: 64rem\)[\s\S]*?\.sidebar\s*\{[\s\S]*?position: static;[\s\S]*?min-height: 0;[\s\S]*?max-height: none;[\s\S]*?overflow-y: auto/);
   assert.match(adminCss, /\.campaignForm > button\s*\{[\s\S]*grid-column: 1 \/ -1;[\s\S]*align-self: start;/);
   assert.match(authSource, /PASSWORD_ITERATIONS = 100_000/);
   assert.doesNotMatch(authSource, /PASSWORD_ITERATIONS = 310_000/);
