@@ -1,0 +1,45 @@
+name: Products v53 release gates
+
+on:
+  push:
+    branches:
+      - verify/products-v53
+
+permissions:
+  contents: read
+
+jobs:
+  release-gates:
+    name: Fresh install and release gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Fresh install from lockfile
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
+
+      - name: Validate production artifact
+        run: npm run validate:artifact
+
+      - name: Tests
+        run: npm test
+
+      - name: Whitespace validation
+        run: git diff --check
