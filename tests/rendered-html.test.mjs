@@ -2079,7 +2079,8 @@ test("keeps product editor and product list independently scrollable only on des
     new URL("../features/admin/admin.module.css", import.meta.url),
     "utf8",
   );
-  assert.match(css, /@media \(min-width: 64rem\)[\s\S]*?\.productWorkspace \{[\s\S]*?height: max\(34rem, calc\(100dvh - 11\.5rem\)\);[\s\S]*?min-height: 0;[\s\S]*?overflow: hidden;/);
+  assert.match(css, /@media \(min-width: 64rem\)[\s\S]*?\.productWorkspace \{[\s\S]*?height: 100%;[\s\S]*?min-height: 0;[\s\S]*?overflow: hidden;/);
+  assert.doesNotMatch(css, /100dvh\s*-\s*11\.5rem/);
   assert.match(css, /@media \(min-width: 64rem\)[\s\S]*?\.productForm,[\s\S]*?\.productList \{[\s\S]*?min-height: 0;[\s\S]*?overflow-y: auto;[\s\S]*?overflow-x: hidden;[\s\S]*?overscroll-behavior: contain;[\s\S]*?scrollbar-gutter: stable;/);
   assert.match(css, /@media \(max-width: 47\.99rem\)/);
   const baseColumns = css.match(/\.productForm,[\s\S]*?\.productList \{[\s\S]*?max-height: none;[\s\S]*?overflow: visible;/);
