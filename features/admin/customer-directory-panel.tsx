@@ -15,6 +15,7 @@ export function CustomerDirectoryPanel({
   const [customers, setCustomers] = useState<AdminCustomerSummary[]>([]);
   const [supabaseAdminReady, setSupabaseAdminReady] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [busyEmail, setBusyEmail] = useState("");
   const [message, setMessage] = useState("");
 
@@ -27,9 +28,12 @@ export function CustomerDirectoryPanel({
         setCustomers(payload.customers);
         setSupabaseAdminReady(payload.supabaseAdminReady);
         setMessage(payload.warning ?? "");
+        setLoadFailed(false);
       })
       .catch((error: unknown) => {
-        if (active) setMessage(error instanceof Error ? error.message : "خواندن مشتریان ممکن نشد.");
+        if (!active) return;
+        setLoadFailed(true);
+        setMessage(error instanceof Error ? error.message : "خواندن فهرست مشتریان ممکن نشد.");
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -78,9 +82,9 @@ export function CustomerDirectoryPanel({
           <a href="https://supabase.com/dashboard/project/xnfgwhlijifhrytzvciu/auth/users" target="_blank" rel="noreferrer">حذف حساب ورود در Supabase</a>
         </div>
       ) : null}
-      {message ? <p className={styles.message} role="status">{message}</p> : null}
+      {message ? <p className={styles.message} role={loadFailed ? "alert" : "status"}>{message}</p> : null}
       {loading ? <p>در حال خواندن مشتریان…</p> : null}
-      {!loading && customers.length === 0 ? <p>هنوز ایمیل مشتری ثبت نشده است.</p> : null}
+      {!loading && !loadFailed && customers.length === 0 ? <p>هنوز ایمیل مشتری ثبت نشده است.</p> : null}
       <div className={styles.list}>
         {customers.map((customer) => (
           <article key={customer.email}>
@@ -118,7 +122,7 @@ async function readPayload(response: Response) {
     error?: string;
   };
   if (!response.ok || !Array.isArray(payload.customers)) {
-    throw new Error(payload.error || "خواندن مشتریان ممکن نشد.");
+    throw new Error(payload.error || "خواندن فهرست مشتریان ممکن نشد.");
   }
   return {
     customers: payload.customers,

@@ -3,14 +3,15 @@ import {
   getCustomerDeletionBlockers,
   listAdminCustomers,
   listCustomerReceiptStorageKeys,
-  upsertCustomerAccount,
 } from "@/db/customer-account-repository";
 import { getAdminAccess } from "@/lib/admin-auth";
+import {
+  loadAdminCustomerDirectory,
+} from "@/lib/admin-customer-directory";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { rejectCrossSiteMutation } from "@/lib/request-security";
 import {
   deleteSupabaseAdminUser,
-  hasSupabaseAdminConfiguration,
   listSupabaseAdminUsers,
 } from "@/lib/supabase-admin";
 
@@ -19,28 +20,19 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const access = await getAdminAccess("customers.read");
   if (!access.allowed) return denied(access.reason);
-  try {
-    const authUsers = await listSupabaseAdminUsers();
-    if (authUsers) {
-      await Promise.all(authUsers.map((user) => upsertCustomerAccount({
-        authUserId: user.id,
-        email: user.email,
-        fullName: user.fullName,
-        emailConfirmedAt: user.emailConfirmedAt,
-        createdAt: user.createdAt,
-      })));
-    }
-    return privateJson({
-      customers: await listAdminCustomers(),
-      supabaseAdminReady: Boolean(authUsers),
-    });
-  } catch {
-    return privateJson({
-      customers: await listAdminCustomers().catch(() => []),
-      supabaseAdminReady: await hasSupabaseAdminConfiguration(),
-      warning: "همگام‌سازی مستقیم حساب‌های ورود موقتاً ممکن نیست.",
-    });
+  const result = await loadAdminCustomerDirectory({
+    listStoreCustomers: () => listAdminCustomers(),
+    listAuthUsers: () => listSupabaseAdminUsers(),
+    logFailure: logCustomerDirectoryFailure,
+  });
+  if (!result.ok) {
+    return privateJson({ error: "خواندن فهرست مشتریان ممکن نشد." }, 503);
   }
+  return privateJson(result.payload);
+}
+
+function logCustomerDirectoryFailure(stage: "d1" | "supabase", code: string) {
+  console.error("admin_customer_directory_read_failed", { stage, code });
 }
 
 export async function DELETE(request: Request) {

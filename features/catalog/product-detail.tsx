@@ -40,6 +40,9 @@ export function ProductDetail({
   relatedProducts,
 }: ProductDetailProps) {
   const discount = getDiscountPercentage(product);
+  const englishTitle = product.englishTitle?.trim()
+    ? product.englishTitle
+    : null;
 
   return (
     <main className={styles.page}>
@@ -71,6 +74,11 @@ export function ProductDetail({
               </span>
             </div>
             <h1 id="product-title">{product.title}</h1>
+            {englishTitle ? (
+              <p className={styles.englishTitle} dir="ltr" lang="en">
+                {product.englishTitle}
+              </p>
+            ) : null}
             <p className={styles.description}>
               {product.shortDescription ?? product.description}
             </p>

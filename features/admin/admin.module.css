@@ -1,4 +1,5 @@
 .page {
+  --admin-topbar-height: 3.5rem;
   min-height: 100vh;
   padding-block-end: 6rem;
   background: linear-gradient(180deg, #eef2ff 0, #f8fafc 18rem, #f8fafc 100%);
@@ -18,7 +19,8 @@
   justify-content: space-between;
   gap: var(--miran-space-4);
   align-items: center;
-  min-height: 4.5rem;
+  min-height: var(--admin-topbar-height);
+  height: var(--admin-topbar-height);
 }
 
 .topbarInner > div {
@@ -57,7 +59,11 @@
 }
 
 .statusBar {
+  position: sticky;
+  top: var(--admin-topbar-height);
+  z-index: 45;
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: var(--miran-space-3);
   align-items: center;
@@ -69,6 +75,7 @@
   color: #065f46;
   font-size: var(--miran-font-size-sm);
   font-weight: 800;
+  overflow-wrap: anywhere;
 }
 
 .statusBar[data-status="saving"],
@@ -901,6 +908,38 @@
   font-weight: 700;
 }
 
+.productForm :is(input, select, textarea) {
+  scroll-margin-block-start: calc(var(--admin-topbar-height) + var(--miran-space-6));
+}
+
+.productForm :is(input, select, textarea)[aria-invalid="true"] {
+  border-color: var(--miran-color-danger);
+  outline: 3px solid color-mix(in srgb, var(--miran-color-danger) 20%, transparent);
+}
+
+.productEditorHeading,
+.variantCardHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--miran-space-3);
+}
+
+.variantQuickAction {
+  min-height: 2.5rem;
+  width: auto !important;
+  border: 1px solid color-mix(in srgb, var(--miran-color-brand) 40%, var(--miran-color-border));
+  border-radius: var(--miran-radius-md);
+  padding-inline: var(--miran-space-3);
+  background: var(--miran-color-surface-muted);
+  color: var(--miran-color-brand);
+  font: inherit;
+  font-size: var(--miran-font-size-xs);
+  font-weight: 900;
+  cursor: pointer;
+}
+
 .galleryEditor {
   margin: 0;
   border: 1px solid var(--miran-color-border);
@@ -955,6 +994,33 @@
   background: var(--miran-color-surface);
   color: var(--miran-color-text);
   font: inherit;
+}
+
+.variantCardHeader {
+  grid-column: 1 / -1;
+  border-block-end: 1px solid var(--miran-color-border);
+  padding-block-end: var(--miran-space-3);
+}
+
+.variantCardHeader > span {
+  display: grid;
+  gap: var(--miran-space-1);
+}
+
+.variantReservation {
+  color: var(--miran-color-text-muted);
+}
+
+.variantReservation[data-reserved="true"] {
+  color: var(--miran-color-danger);
+  font-weight: 900;
+}
+
+.variantEmptyState {
+  border: 1px dashed var(--miran-color-border);
+  border-radius: var(--miran-radius-md);
+  padding: var(--miran-space-3);
+  background: var(--miran-color-surface-muted);
 }
 
 @media (min-width: 48rem) {
@@ -1590,18 +1656,37 @@
 }
 
 @media (min-width: 64rem) {
+  .page {
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+    padding-block-end: 0;
+  }
+
+  .adminBody {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+    height: calc(100dvh - var(--admin-topbar-height));
+    overflow: hidden;
+  }
+
   .layout {
     grid-template-columns: 14rem minmax(0, 1fr);
     gap: var(--miran-space-8);
+    align-items: stretch;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
   }
 
   .sidebar {
-    position: sticky;
-    top: calc(4.5rem + var(--miran-space-5));
+    position: static;
     z-index: 20;
-    align-self: start;
+    align-self: stretch;
     grid-template-columns: 1fr;
-    max-height: calc(100dvh - 4.5rem - (2 * var(--miran-space-5)));
+    min-height: 0;
+    max-height: none;
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
@@ -1614,7 +1699,24 @@
   }
 
   .productWorkspace {
-    height: max(34rem, calc(100dvh - 11.5rem));
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .workspace {
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .layout[data-products="true"] .workspace {
+    overflow: hidden;
+  }
+
+  .productSection {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 100%;
     min-height: 0;
     overflow: hidden;
   }
@@ -1630,14 +1732,14 @@
     scrollbar-gutter: stable;
   }
 
-  .productForm h2,
-  .productList h2 {
+  .productEditorHeading,
+  .productList > h2 {
     position: sticky;
-    top: calc(-1 * var(--miran-space-5));
+    top: 0;
     z-index: 4;
-    margin: calc(-1 * var(--miran-space-5)) calc(-1 * var(--miran-space-5)) 0;
     border-block-end: 1px solid var(--miran-color-border);
-    padding: var(--miran-space-4) var(--miran-space-5);
+    padding-block-end: var(--miran-space-3);
     background: var(--miran-color-surface);
   }
+
 }

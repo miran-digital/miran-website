@@ -1808,6 +1808,178 @@ test("renders product cards with discount percent and rial equivalent", async ()
   assert.match(html, /ریال/);
 });
 
+test("renders only the stored English product title below the Persian detail title", async () => {
+  const d1 = await createD1TestDatabase();
+  const storedProduct = await d1.database.prepare(
+    "SELECT id FROM products ORDER BY rowid LIMIT 1",
+  ).first();
+  const exactStoredTitle = "MIRAN X-Pro 5G / 128GB";
+  await d1.database.prepare(
+    "UPDATE products SET english_title = ? WHERE id = ?",
+  ).bind(exactStoredTitle, storedProduct.id).run();
+  const { readStorefrontState } = await import("../db/admin-repository.ts");
+  const storefrontState = await readStorefrontState(d1.database);
+  assert.equal(
+    storefrontState.products.find((product) => product.id === storedProduct.id)?.englishTitle,
+    exactStoredTitle,
+  );
+  d1.close();
+
+  const [detailSource, detailCss, productPageSource] = await Promise.all([
+    readFile(new URL("../features/catalog/product-detail.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../features/catalog/product-detail.module.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/product/[slug]/page.tsx", import.meta.url), "utf8"),
+  ]);
+
+  const persianTitle = detailSource.indexOf('<h1 id="product-title">{product.title}</h1>');
+  const englishTitle = detailSource.indexOf("className={styles.englishTitle}");
+  const description = detailSource.indexOf("className={styles.description}");
+  assert.ok(persianTitle >= 0 && englishTitle > persianTitle && description > englishTitle);
+  assert.match(detailSource, /product\.englishTitle\?\.trim\(\)[\s\S]*\? product\.englishTitle[\s\S]*: null/);
+  assert.match(detailSource, /\{englishTitle \? \([\s\S]*dir="ltr" lang="en"[\s\S]*\{product\.englishTitle\}[\s\S]*\) : null\}/);
+  assert.doesNotMatch(detailSource, /English title unavailable|عنوان انگلیسی ثبت نشده/);
+
+  assert.match(detailCss, /\.englishTitle\s*\{[^}]*max-width: 100%/);
+  assert.match(detailCss, /\.englishTitle\s*\{[^}]*direction: ltr/);
+  assert.match(detailCss, /\.englishTitle\s*\{[^}]*font-size: clamp\(/);
+  assert.match(detailCss, /\.englishTitle\s*\{[^}]*overflow-wrap: anywhere/);
+  assert.match(detailCss, /\.englishTitle\s*\{[^}]*text-align: left/);
+  assert.match(detailCss, /\.englishTitle\s*\{[^}]*unicode-bidi: isolate/);
+  assert.match(detailCss, /\.englishTitle\s*\{[^}]*white-space: normal/);
+
+  assert.match(productPageSource, /title: product\.title/);
+  assert.match(productPageSource, /name: product\.title/);
+});
+
+test("keeps the admin topbar compact, status visible, and product panels independently scrollable", async () => {
+  const [pageSource, css] = await Promise.all([
+    readFile(new URL("../features/admin/admin-page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../features/admin/admin.module.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(pageSource, /className=\{styles\.adminBody\}/);
+  assert.match(pageSource, /className=\{styles\.statusBar\}[\s\S]*role="status"/);
+  assert.match(css, /--admin-topbar-height:\s*3\.5rem/);
+  assert.match(css, /\.topbarInner\s*\{[\s\S]*?height:\s*var\(--admin-topbar-height\)/);
+  assert.match(css, /\.statusBar\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?top:\s*var\(--admin-topbar-height\);[\s\S]*?flex-wrap:\s*wrap/);
+  assert.doesNotMatch(css, /100dvh\s*-\s*11\.5rem|4\.5rem/);
+  assert.match(css, /\.productForm,\s*\n\.productList\s*\{[\s\S]*?max-height:\s*none;[\s\S]*?overflow:\s*visible/);
+  assert.match(css, /@media \(min-width: 64rem\)[\s\S]*?\.productWorkspace\s*\{[\s\S]*?height:\s*100%;[\s\S]*?overflow:\s*hidden/);
+  assert.match(css, /@media \(min-width: 64rem\)[\s\S]*?\.productForm,\s*\n\s*\.productList\s*\{[\s\S]*?overflow-y:\s*auto;[\s\S]*?overscroll-behavior:\s*contain/);
+});
+
+test("focuses invalid product controls and makes variant management discoverable without weakening deletion", async () => {
+  const [pageSource, css] = await Promise.all([
+    readFile(new URL("../features/admin/admin-page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../features/admin/admin.module.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(pageSource, /form\.checkValidity\(\)/);
+  assert.match(pageSource, /setAttribute\("aria-invalid", "true"\)/);
+  assert.match(pageSource, /focus\(\{ preventScroll: true \}\)/);
+  assert.match(pageSource, /scrollIntoView\(\{ behavior: "smooth", block: "center", inline: "nearest" \}\)/);
+  assert.match(pageSource, /onInputCapture=[\s\S]*?removeAttribute\("aria-invalid"\)/);
+  assert.match(pageSource, /noValidate/);
+  assert.match(pageSource, /لطفاً فیلد مشخص‌شده را بررسی و اصلاح کنید\./);
+  assert.match(css, /\[aria-invalid="true"\][\s\S]*?border-color:\s*var\(--miran-color-danger\)/);
+
+  assert.match(pageSource, /رفتن به تنوع‌ها \(\{editingProduct\.variants\.length\.toLocaleString\("fa-IR"\)\}\)/);
+  assert.match(pageSource, /id="product-variants"/);
+  assert.match(pageSource, /تنوع‌های محصول \(\{\(editingProduct\?\.variants\.length \?\? 0\)\.toLocaleString\("fa-IR"\)\}\)/);
+  assert.match(pageSource, /این محصول تنوعی ندارد\./);
+  assert.match(pageSource, /رزرو فعال — حذف ممکن نیست/);
+  assert.match(pageSource, /disabled=\{productBusy \|\| variant\.reservedQuantity > 0\}/);
+  assert.match(pageSource, /onClick=\{\(\) => void deleteProductVariant\(editingProduct!\.id, variant\.id\)\}/);
+  assert.match(pageSource, /VARIANT_DELETE_CONFIRMATION/);
+});
+
+test("serves the customer directory from D1 when Supabase admin sync is unavailable and fails closed on D1 errors", async () => {
+  const {
+    CUSTOMER_DIRECTORY_FALLBACK_WARNING,
+    loadAdminCustomerDirectory,
+    mergeAdminCustomerDirectory,
+  } = await import("../lib/admin-customer-directory.ts");
+  const storedCustomer = {
+    email: "customer@example.com",
+    fullName: "مشتری فروشگاه",
+    authUserId: "",
+    provider: "store",
+    emailConfirmedAt: "",
+    registeredAt: "2026-08-20T10:00:00.000Z",
+    lastSeenAt: "2026-08-22T10:00:00.000Z",
+    orderCount: 2,
+    addressCount: 3,
+    ticketCount: 1,
+    reviewCount: 4,
+  };
+  const failures = [];
+  const missingConfig = await loadAdminCustomerDirectory({
+    listStoreCustomers: async () => [storedCustomer],
+    listAuthUsers: async () => null,
+    logFailure: (stage, code) => failures.push({ stage, code }),
+  });
+  assert.equal(missingConfig.ok, true);
+  assert.deepEqual(missingConfig.payload.customers, [storedCustomer]);
+  assert.equal(missingConfig.payload.warning, CUSTOMER_DIRECTORY_FALLBACK_WARNING);
+
+  const unavailable = await loadAdminCustomerDirectory({
+    listStoreCustomers: async () => [storedCustomer],
+    listAuthUsers: async () => { throw new Error("SUPABASE_ADMIN_UNAVAILABLE"); },
+    logFailure: (stage, code) => failures.push({ stage, code }),
+  });
+  assert.equal(unavailable.ok, true);
+  assert.deepEqual(unavailable.payload.customers, [storedCustomer]);
+  assert.deepEqual(failures, [{ stage: "supabase", code: "SUPABASE_ADMIN_UNAVAILABLE" }]);
+
+  let authReadAttempted = false;
+  const d1Failure = await loadAdminCustomerDirectory({
+    listStoreCustomers: async () => { throw new Error("D1_ERROR: read failed"); },
+    listAuthUsers: async () => { authReadAttempted = true; return []; },
+    logFailure: (stage, code) => failures.push({ stage, code }),
+  });
+  assert.equal(d1Failure.ok, false);
+  assert.equal(authReadAttempted, false);
+  assert.deepEqual(failures.at(-1), { stage: "d1", code: "D1_ERROR" });
+
+  const merged = mergeAdminCustomerDirectory([storedCustomer], [{
+    id: "auth-1",
+    email: "Customer@Example.com",
+    fullName: "نام ورود",
+    emailConfirmedAt: "2026-08-21T10:00:00.000Z",
+    createdAt: "2026-08-19T10:00:00.000Z",
+  }]);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].provider, "supabase");
+  assert.equal(merged[0].orderCount, 2);
+  assert.equal(merged[0].addressCount, 3);
+});
+
+test("keeps customer GET read-only, permission-protected, observable, and free of fake zero fallbacks", async () => {
+  const [routeSource, repositorySource, panelSource] = await Promise.all([
+    readFile(new URL("../app/api/admin/customers/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../db/customer-account-repository.ts", import.meta.url), "utf8"),
+    readFile(new URL("../features/admin/customer-directory-panel.tsx", import.meta.url), "utf8"),
+  ]);
+  const getSource = routeSource.slice(routeSource.indexOf("export async function GET"), routeSource.indexOf("export async function DELETE"));
+  assert.match(getSource, /getAdminAccess\("customers\.read"\)/);
+  assert.match(getSource, /listStoreCustomers: \(\) => listAdminCustomers\(\)/);
+  assert.match(getSource, /listAuthUsers: \(\) => listSupabaseAdminUsers\(\)/);
+  assert.match(getSource, /خواندن فهرست مشتریان ممکن نشد\.[\s\S]*503/);
+  assert.match(getSource, /admin_customer_directory_read_failed[\s\S]*\{ stage, code \}/);
+  assert.doesNotMatch(getSource, /upsertCustomerAccount|\.catch\(\(\) => \[\]\)|Promise\.all/);
+  assert.doesNotMatch(getSource, /email|customer_email|owner_email/);
+  assert.match(repositorySource, /FROM customer_accounts[\s\S]*FROM orders[\s\S]*FROM customer_addresses[\s\S]*FROM support_tickets[\s\S]*FROM product_reviews[\s\S]*FROM customer_notifications/);
+  assert.doesNotMatch(repositorySource.slice(repositorySource.indexOf("export async function listAdminCustomers"), repositorySource.indexOf("export async function getCustomerDeletionBlockers")), /Promise\.all|\.catch\(\(\) => \[\]\)/);
+  assert.match(panelSource, /!loading && !loadFailed && customers\.length === 0/);
+  assert.match(panelSource, /role=\{loadFailed \? "alert" : "status"\}/);
+
+  const worker = await loadWorker();
+  const response = await worker.fetch(
+    new Request("http://localhost/api/admin/customers"),
+    {},
+    { waitUntil() {}, passThroughOnException() {} },
+  );
+  assert.equal(response.status, 401);
+});
+
 test("rejects files whose bytes do not match the declared upload type", async () => {
   const { hasValidUploadSignature } = await import("../lib/upload-signature.ts");
   const validPng = new File([

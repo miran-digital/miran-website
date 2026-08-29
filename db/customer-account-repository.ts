@@ -23,7 +23,7 @@ export type AdminCustomerSummary = {
   reviewCount: number;
 };
 
-type CustomerSummaryRow = {
+type CustomerAccountSummaryRow = {
   email: string;
   full_name: string;
   auth_user_id: string;
@@ -31,10 +31,14 @@ type CustomerSummaryRow = {
   email_confirmed_at: string;
   registered_at: string;
   last_seen_at: string;
-  order_count: number;
-  address_count: number;
-  ticket_count: number;
-  review_count: number;
+};
+
+type CustomerActivitySummaryRow = {
+  email: string;
+  full_name?: string;
+  registered_at: string;
+  last_seen_at: string;
+  item_count: number;
 };
 
 export async function upsertCustomerAccount(
@@ -73,56 +77,143 @@ export async function upsertCustomerAccount(
 
 export async function listAdminCustomers(databaseOverride?: D1Database) {
   const database = databaseOverride ?? await requireDatabase();
-  const result = await database
-    .prepare(
-      `WITH known_emails AS (
-         SELECT lower(email) AS email FROM customer_accounts
-         UNION SELECT lower(customer_email) FROM orders
-         UNION SELECT lower(owner_email) FROM customer_addresses
-         UNION SELECT lower(customer_email) FROM support_tickets
-         UNION SELECT lower(customer_email) FROM product_reviews
-         UNION SELECT lower(owner_email) FROM customer_notifications
-       )
-       SELECT e.email,
-              COALESCE(a.full_name,
-                (SELECT customer_name FROM orders o WHERE lower(o.customer_email) = e.email ORDER BY o.created_at DESC LIMIT 1),
-                (SELECT customer_name FROM support_tickets t WHERE lower(t.customer_email) = e.email ORDER BY t.updated_at DESC LIMIT 1),
-                '') AS full_name,
-              COALESCE(a.auth_user_id, '') AS auth_user_id,
-              COALESCE(a.provider, 'store') AS provider,
-              COALESCE(a.email_confirmed_at, '') AS email_confirmed_at,
-              COALESCE(a.created_at,
-                (SELECT MIN(o.created_at) FROM orders o WHERE lower(o.customer_email) = e.email),
-                (SELECT MIN(t.created_at) FROM support_tickets t WHERE lower(t.customer_email) = e.email),
-                '') AS registered_at,
-              COALESCE(a.last_seen_at,
-                (SELECT MAX(o.updated_at) FROM orders o WHERE lower(o.customer_email) = e.email),
-                (SELECT MAX(t.updated_at) FROM support_tickets t WHERE lower(t.customer_email) = e.email),
-                '') AS last_seen_at,
-              (SELECT COUNT(*) FROM orders o WHERE lower(o.customer_email) = e.email) AS order_count,
-              (SELECT COUNT(*) FROM customer_addresses ca WHERE lower(ca.owner_email) = e.email) AS address_count,
-              (SELECT COUNT(*) FROM support_tickets t WHERE lower(t.customer_email) = e.email) AS ticket_count,
-              (SELECT COUNT(*) FROM product_reviews r WHERE lower(r.customer_email) = e.email) AS review_count
-         FROM known_emails e
-         LEFT JOIN customer_accounts a ON lower(a.email) = e.email
-        WHERE e.email != ''
-        ORDER BY COALESCE(a.last_seen_at, registered_at) DESC, e.email ASC
-        LIMIT 1000`,
-    )
-    .all<CustomerSummaryRow>();
-  return result.results.map((row): AdminCustomerSummary => ({
-    email: row.email,
-    fullName: row.full_name,
-    authUserId: row.auth_user_id,
-    provider: row.provider,
-    emailConfirmedAt: row.email_confirmed_at,
-    registeredAt: row.registered_at,
-    lastSeenAt: row.last_seen_at,
-    orderCount: Number(row.order_count),
-    addressCount: Number(row.address_count),
-    ticketCount: Number(row.ticket_count),
-    reviewCount: Number(row.review_count),
-  }));
+  const accounts = await database.prepare(
+    `SELECT lower(email) AS email,
+            COALESCE(full_name, '') AS full_name,
+            COALESCE(auth_user_id, '') AS auth_user_id,
+            COALESCE(provider, 'store') AS provider,
+            COALESCE(email_confirmed_at, '') AS email_confirmed_at,
+            COALESCE(created_at, '') AS registered_at,
+            COALESCE(last_seen_at, '') AS last_seen_at
+       FROM customer_accounts
+      WHERE trim(email) != ''
+      LIMIT 1000`,
+  ).all<CustomerAccountSummaryRow>();
+  const orders = await database.prepare(
+    `SELECT lower(customer_email) AS email,
+            COALESCE(MAX(NULLIF(customer_name, '')), '') AS full_name,
+            COALESCE(MIN(created_at), '') AS registered_at,
+            COALESCE(MAX(updated_at), '') AS last_seen_at,
+            COUNT(*) AS item_count
+       FROM orders
+      WHERE trim(customer_email) != ''
+      GROUP BY lower(customer_email)
+      LIMIT 1000`,
+  ).all<CustomerActivitySummaryRow>();
+  const addresses = await database.prepare(
+    `SELECT lower(owner_email) AS email,
+            COALESCE(MIN(created_at), '') AS registered_at,
+            COALESCE(MAX(updated_at), '') AS last_seen_at,
+            COUNT(*) AS item_count
+       FROM customer_addresses
+      WHERE trim(owner_email) != ''
+      GROUP BY lower(owner_email)
+      LIMIT 1000`,
+  ).all<CustomerActivitySummaryRow>();
+  const tickets = await database.prepare(
+    `SELECT lower(customer_email) AS email,
+            COALESCE(MAX(NULLIF(customer_name, '')), '') AS full_name,
+            COALESCE(MIN(created_at), '') AS registered_at,
+            COALESCE(MAX(updated_at), '') AS last_seen_at,
+            COUNT(*) AS item_count
+       FROM support_tickets
+      WHERE trim(customer_email) != ''
+      GROUP BY lower(customer_email)
+      LIMIT 1000`,
+  ).all<CustomerActivitySummaryRow>();
+  const reviews = await database.prepare(
+    `SELECT lower(customer_email) AS email,
+            COALESCE(MAX(NULLIF(customer_name, '')), '') AS full_name,
+            COALESCE(MIN(created_at), '') AS registered_at,
+            COALESCE(MAX(updated_at), '') AS last_seen_at,
+            COUNT(*) AS item_count
+       FROM product_reviews
+      WHERE trim(customer_email) != ''
+      GROUP BY lower(customer_email)
+      LIMIT 1000`,
+  ).all<CustomerActivitySummaryRow>();
+  const notifications = await database.prepare(
+    `SELECT lower(owner_email) AS email,
+            COALESCE(MIN(created_at), '') AS registered_at,
+            COALESCE(MAX(created_at), '') AS last_seen_at,
+            COUNT(*) AS item_count
+       FROM customer_notifications
+      WHERE trim(owner_email) != ''
+      GROUP BY lower(owner_email)
+      LIMIT 1000`,
+  ).all<CustomerActivitySummaryRow>();
+
+  const customers = new Map<string, AdminCustomerSummary>();
+  const getCustomer = (emailAddress: string) => {
+    const email = emailAddress.trim().toLowerCase();
+    if (!email) return null;
+    const existing = customers.get(email);
+    if (existing) return existing;
+    const created: AdminCustomerSummary = {
+      email,
+      fullName: "",
+      authUserId: "",
+      provider: "store",
+      emailConfirmedAt: "",
+      registeredAt: "",
+      lastSeenAt: "",
+      orderCount: 0,
+      addressCount: 0,
+      ticketCount: 0,
+      reviewCount: 0,
+    };
+    customers.set(email, created);
+    return created;
+  };
+  const mergeActivity = (
+    rows: CustomerActivitySummaryRow[],
+    countKey?: "orderCount" | "addressCount" | "ticketCount" | "reviewCount",
+  ) => {
+    for (const row of rows) {
+      const customer = getCustomer(row.email);
+      if (!customer) continue;
+      if (!customer.fullName && row.full_name) customer.fullName = row.full_name;
+      customer.registeredAt = earliestTimestamp(customer.registeredAt, row.registered_at);
+      customer.lastSeenAt = latestTimestamp(customer.lastSeenAt, row.last_seen_at);
+      if (countKey) customer[countKey] = Number(row.item_count);
+    }
+  };
+
+  for (const row of accounts.results) {
+    const customer = getCustomer(row.email);
+    if (!customer) continue;
+    customer.fullName = row.full_name;
+    customer.authUserId = row.auth_user_id;
+    customer.provider = row.provider;
+    customer.emailConfirmedAt = row.email_confirmed_at;
+    customer.registeredAt = row.registered_at;
+    customer.lastSeenAt = row.last_seen_at;
+  }
+  mergeActivity(orders.results, "orderCount");
+  mergeActivity(addresses.results, "addressCount");
+  mergeActivity(tickets.results, "ticketCount");
+  mergeActivity(reviews.results, "reviewCount");
+  mergeActivity(notifications.results);
+
+  return [...customers.values()]
+    .sort((left, right) => {
+      const leftActivity = left.lastSeenAt || left.registeredAt;
+      const rightActivity = right.lastSeenAt || right.registeredAt;
+      return rightActivity.localeCompare(leftActivity) || left.email.localeCompare(right.email);
+    })
+    .slice(0, 1000);
+}
+
+function earliestTimestamp(current: string, candidate: string) {
+  if (!current) return candidate;
+  if (!candidate) return current;
+  return candidate < current ? candidate : current;
+}
+
+function latestTimestamp(current: string, candidate: string) {
+  if (!current) return candidate;
+  if (!candidate) return current;
+  return candidate > current ? candidate : current;
 }
 
 export async function getCustomerDeletionBlockers(

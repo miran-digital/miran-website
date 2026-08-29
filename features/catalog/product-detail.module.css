@@ -134,6 +134,21 @@
   line-height: var(--miran-line-height-tight);
 }
 
+.englishTitle {
+  min-width: 0;
+  max-width: 100%;
+  margin: var(--miran-space-2) 0 0;
+  color: var(--miran-color-text-muted);
+  direction: ltr;
+  font-size: clamp(1rem, 2.5vw, 1.35rem);
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  text-align: left;
+  unicode-bidi: isolate;
+  white-space: normal;
+}
+
 .description {
   margin: var(--miran-space-4) 0 0;
   color: var(--miran-color-text-muted);

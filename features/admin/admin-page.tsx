@@ -106,6 +106,7 @@ type StagedProductImage = { key: string; file: File; previewUrl: string };
 type StagedProductVideo = { file: File; previewUrl: string };
 const VARIANT_DELETE_CONFIRMATION =
   "فقط همین تنوع حذف می‌شود. خود محصول، تصاویر، ویدیو، قیمت اصلی و سایر تنوع‌ها باقی می‌مانند. ادامه می‌دهید؟";
+const PRODUCT_VALIDATION_MESSAGE = "لطفاً فیلد مشخص‌شده را بررسی و اصلاح کنید.";
 const nextOrderStatuses: Record<OrderStatus, readonly OrderStatus[]> = {
   new: ["confirmed", "cancelled"],
   confirmed: ["packing", "cancelled"],
@@ -229,6 +230,28 @@ function optionalCalendarDateTime(
   return { iso, valid: Boolean(iso) };
 }
 
+function focusProductControl(form: HTMLFormElement, fieldName?: string) {
+  const selector = fieldName ? `[name="${CSS.escape(fieldName)}"]` : ":invalid";
+  const control = form.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(selector);
+  if (!control) return;
+  control.setAttribute("aria-invalid", "true");
+  requestAnimationFrame(() => {
+    control.focus({ preventScroll: true });
+    control.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+  });
+}
+
+function productErrorField(message: string) {
+  if (message.includes("نامک")) return "slug";
+  if (message.includes("SKU") || message.includes("کد کالا")) return "sku";
+  if (message.includes("درصد تخفیف") || message.includes("مبلغ")) return "discountValue";
+  if (message.includes("شگفت‌انگیز")) return "amazingStartsDate";
+  if (message.includes("تنوع")) return "newVariantTitle";
+  if (message.includes("برند")) return "brand";
+  if (message.includes("دسته")) return "category";
+  return undefined;
+}
+
 export function AdminPage({
   categories,
   signOutHref,
@@ -267,6 +290,7 @@ export function AdminPage({
   const [productCategorySelection, setProductCategorySelection] = useState("");
   const [productBrandSelection, setProductBrandSelection] = useState("");
   const productPreviewUrls = useRef(new Set<string>());
+  const productVariantsRef = useRef<HTMLFieldSetElement>(null);
   const [productMediaInputVersion, setProductMediaInputVersion] = useState(0);
   const [productEditorVersion, setProductEditorVersion] = useState(0);
   const [productBusy, setProductBusy] = useState(false);
@@ -1192,6 +1216,13 @@ export function AdminPage({
   async function addProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
+    form.querySelectorAll('[aria-invalid="true"]').forEach((control) => control.removeAttribute("aria-invalid"));
+    if (!form.checkValidity()) {
+      setSaveStatus("error");
+      setStatusMessage(PRODUCT_VALIDATION_MESSAGE);
+      focusProductControl(form);
+      return;
+    }
     const data = new FormData(form);
     const title = String(data.get("title") ?? "").trim();
     const slug = normalizeSlug(String(data.get("slug") ?? ""));
@@ -1236,7 +1267,25 @@ export function AdminPage({
       discountValue < 0 ||
       !Number.isSafeInteger(stockQuantity) ||
       stockQuantity < (editingProduct?.reservedQuantity ?? 0)
-    ) return;
+    ) {
+      const fieldName = !title
+        ? "title"
+        : !slug
+          ? "slug"
+          : !selectableCategories.some((item) => item.slug === category)
+            ? "category"
+            : !brand
+              ? "brand"
+              : !Number.isFinite(basePrice) || basePrice < 0
+                ? "basePrice"
+                : !Number.isFinite(discountValue) || discountValue < 0
+                  ? "discountValue"
+                  : "stockQuantity";
+      setSaveStatus("error");
+      setStatusMessage(PRODUCT_VALIDATION_MESSAGE);
+      focusProductControl(form, fieldName);
+      return;
+    }
 
     setProductBusy(true);
     setStatusMessage("");
@@ -1552,12 +1601,14 @@ export function AdminPage({
       setLastSavedProductSlug(nextProduct.slug);
     } catch (error) {
       const cleanupComplete = await cleanupUploadedMedia(pendingUploads);
+      const message = error instanceof Error ? error.message : "ساخت محصول ممکن نشد.";
       setSaveStatus("error");
       setStatusMessage(
-        `${error instanceof Error ? error.message : "ساخت محصول ممکن نشد."}${
+        `${message}${
           cleanupComplete ? "" : " پاک‌سازی فایل موقت نیز ممکن نشد؛ دوباره تلاش کنید."
         }`,
       );
+      focusProductControl(form, productErrorField(message));
     } finally {
       setProductBusy(false);
     }
@@ -1833,7 +1884,7 @@ export function AdminPage({
           </div>
         </Container>
       </header>
-      <Container size="wide">
+      <Container size="wide" className={styles.adminBody}>
         <div className={styles.statusBar} data-status={saveStatus} data-compact={tab === "products"} role="status">
           <span>
             {saveStatus === "loading"
@@ -2365,8 +2416,32 @@ export function AdminPage({
               <section className={styles.productSection} aria-labelledby="products-title">
                 <Heading kicker="Catalog" id="products-title">مدیریت محصولات</Heading>
                 <div className={styles.productWorkspace}>
-                  <form id="product-editor" key={`${editingProduct?.id ?? "new"}-${productEditorVersion}`} className={styles.productForm} onSubmit={addProduct}>
-                    <h2>{editingProduct ? "ویرایش محصول" : "محصول جدید"}</h2>
+                  <form
+                    id="product-editor"
+                    key={`${editingProduct?.id ?? "new"}-${productEditorVersion}`}
+                    className={styles.productForm}
+                    onSubmit={addProduct}
+                    onInputCapture={(event) => {
+                      const control = event.target;
+                      if (
+                        (control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement) &&
+                        control.checkValidity()
+                      ) control.removeAttribute("aria-invalid");
+                    }}
+                    noValidate
+                  >
+                    <div className={styles.productEditorHeading}>
+                      <h2>{editingProduct ? "ویرایش محصول" : "محصول جدید"}</h2>
+                      {editingProduct ? (
+                        <button
+                          className={styles.variantQuickAction}
+                          type="button"
+                          onClick={() => productVariantsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                        >
+                          رفتن به تنوع‌ها ({editingProduct.variants.length.toLocaleString("fa-IR")})
+                        </button>
+                      ) : null}
+                    </div>
                     <label>عنوان فارسی<input name="title" required maxLength={180} defaultValue={editingProduct?.title} /></label>
                     <label>عنوان انگلیسی (اختیاری)<input name="englishTitle" maxLength={180} dir="ltr" defaultValue={editingProduct?.englishTitle ?? ""} /></label>
                     <label>نامک انگلیسی<input name="slug" required pattern="[A-Za-z0-9-]+" dir="ltr" defaultValue={editingProduct?.slug} /></label>
@@ -2475,28 +2550,39 @@ export function AdminPage({
                       <small>در حالت درصدی، مقدار تخفیف بین ۰ تا ۱۰۰ است. در حالت مبلغ ثابت، واحد انتخابی اعمال می‌شود.</small>
                       {editingProduct ? <small>قیمت نهایی فعلی: {formatMoney(editingProduct.priceMinor, IRAN_CURRENCY)} ({formatRialReference(editingProduct.priceMinor)})</small> : null}
                     </fieldset>
-                    <fieldset className={styles.priceEditor}>
-                      <legend>تنوع‌های محصول</legend>
+                    <fieldset ref={productVariantsRef} id="product-variants" className={styles.priceEditor}>
+                      <legend>تنوع‌های محصول ({(editingProduct?.variants.length ?? 0).toLocaleString("fa-IR")})</legend>
                       <p>برای رنگ، سایز یا مدل‌های مختلف، SKU، قیمت و موجودی مستقل تعریف کنید. اگر تنوعی ندارید این بخش را خالی بگذارید.</p>
+                      {(editingProduct?.variants.length ?? 0) === 0 ? <p className={styles.variantEmptyState}>این محصول تنوعی ندارد.</p> : null}
                       {(editingProduct?.variants ?? []).map((variant) => (
-                        <article key={variant.id} className={styles.commerceRow}>
+                        <article key={variant.id} className={`${styles.commerceRow} ${styles.variantCard}`}>
+                          <header className={styles.variantCardHeader}>
+                            <span>
+                              <strong>{variant.title}</strong>
+                              <small dir="ltr">SKU: {variant.sku}</small>
+                              <small className={styles.variantReservation} data-reserved={variant.reservedQuantity > 0}>
+                                {variant.reservedQuantity > 0
+                                  ? "رزرو فعال — حذف ممکن نیست"
+                                  : "بدون رزرو فعال"}
+                              </small>
+                            </span>
+                            {can("catalog.delete") ? (
+                              <button
+                                className={styles.dangerButton}
+                                type="button"
+                                disabled={productBusy || variant.reservedQuantity > 0}
+                                onClick={() => void deleteProductVariant(editingProduct!.id, variant.id)}
+                              >
+                                حذف تنوع
+                              </button>
+                            ) : null}
+                          </header>
                           <label>عنوان<input name={`variantTitle-${variant.id}`} defaultValue={variant.title} maxLength={120} /></label>
                           <label>SKU<input name={`variantSku-${variant.id}`} defaultValue={variant.sku} dir="ltr" maxLength={80} /></label>
                           <label>قیمت<input name={`variantPrice-${variant.id}`} type="number" min="0" defaultValue={rialToPriceInput(variant.priceMinor, "toman")} /></label>
                           <label>قیمت قبل تخفیف<input name={`variantCompareAt-${variant.id}`} type="number" min="0" defaultValue={rialToPriceInput(variant.compareAtPriceMinor, "toman")} /></label>
                           <label>موجودی<input name={`variantStock-${variant.id}`} type="number" min={variant.reservedQuantity} max="1000000" defaultValue={variant.stockQuantity} /></label>
                           <label><input name={`variantVisible-${variant.id}`} type="checkbox" defaultChecked={variant.visible} /> نمایش</label>
-                          {can("catalog.delete") ? (
-                            <button
-                              className={styles.dangerButton}
-                              type="button"
-                              disabled={productBusy}
-                              onClick={() => void deleteProductVariant(editingProduct!.id, variant.id)}
-                            >
-                              حذف تنوع
-                            </button>
-                          ) : null}
-                          <small>رزروشده: {variant.reservedQuantity.toLocaleString("fa-IR")}</small>
                           {(variant.attributes ?? []).map((attribute) => (
                             <label key={attribute.id}>{attribute.label} <small dir="ltr">{attribute.code}</small>
                               <AttributeValueInput name={`variantAttributeValue-${attribute.id}`} dataType={attribute.dataType} defaultValue={attribute.value} />
