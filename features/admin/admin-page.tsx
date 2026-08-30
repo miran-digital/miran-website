@@ -2799,81 +2799,85 @@ export function AdminPage({
                     {editingProduct ? <button type="button" onClick={cancelProductEdit}>لغو ویرایش</button> : null}
                   </form>
                   <div className={styles.productList}>
-                    <h2>محصولات هر دسته</h2>
-                    <nav className={styles.productCategoryFilter} aria-label="انتخاب دستهٔ محصولات">
-                      {orderedRootCategories.map((category) => (
-                        <button
-                          key={category.slug}
-                          type="button"
-                          data-active={activeProductCategoryFilter === category.slug}
-                          onClick={() => setProductCategoryFilter(category.slug)}
-                        >
-                          {category.name}
-                        </button>
-                      ))}
-                    </nav>
-                    {activeFilterChildren.length > 0 ? (
-                      <div className={styles.productSubcategoryFilter}>
-                        {activeFilterChildren.map((category) => (
-                          <button key={category.slug} type="button" data-active={activeProductCategoryFilter === category.slug} onClick={() => setProductCategoryFilter(category.slug)}>
+                    <div className={styles.productListHeader}>
+                      <h2>محصولات هر دسته</h2>
+                      <nav className={styles.productCategoryFilter} aria-label="انتخاب دستهٔ محصولات">
+                        {orderedRootCategories.map((category) => (
+                          <button
+                            key={category.slug}
+                            type="button"
+                            data-active={activeProductCategoryFilter === category.slug}
+                            onClick={() => setProductCategoryFilter(category.slug)}
+                          >
                             {category.name}
                           </button>
                         ))}
-                      </div>
-                    ) : allManagedCategories.find((category) => category.slug === activeProductCategoryFilter)?.parentSlug ? (
-                      <button
-                        className={styles.backToParentFilter}
-                        type="button"
-                        onClick={() => setProductCategoryFilter(
-                          allManagedCategories.find((category) => category.slug === activeProductCategoryFilter)?.parentSlug ?? "",
-                        )}
-                      >
-                        بازگشت به دستهٔ مادر
-                      </button>
-                    ) : null}
-                    <p>
-                      {categoryPathLabel(activeProductCategoryFilter)} · {filteredAdminProducts.length.toLocaleString("fa-IR")} محصول
-                    </p>
-                    {filteredAdminProducts.length === 0 ? <p>در این دسته هنوز محصولی ثبت نشده است.</p> : null}
-                    {groupedAdminProducts.map((categoryGroup) => (
-                      <section key={categoryGroup.categorySlug} className={styles.productCategoryGroup}>
-                        <h3>{categoryPathLabel(categoryGroup.categorySlug)}</h3>
-                        {categoryGroup.brands.map(([brandLabel, products]) => (
-                          <section key={brandLabel} className={styles.productBrandGroup}>
-                            <h4>{brandLabel} <small>{products.length.toLocaleString("fa-IR")} محصول</small></h4>
-                            {products.map((product) => (
-                              <article key={product.id}>
-                                {product.imageUrls[0] ? <img src={product.imageUrls[0]} alt={product.title} /> : <span>بدون تصویر</span>}
-                                <div><strong>{product.title}</strong><small>{product.brand} · {categoryPathLabel(product.category)} · SKU: {product.sku}</small><small>{formatAdminMoney(product.priceMinor, product.currency)} · {product.imageUrls.length.toLocaleString("fa-IR")} تصویر{product.videoUrl ? " · دارای ویدئو" : ""}{product.amazingEnabled ? " · زمان‌بندی شگفت‌انگیز" : ""} · موجود: {(product.stockQuantity - product.reservedQuantity).toLocaleString("fa-IR")} · رزرو: {product.reservedQuantity.toLocaleString("fa-IR")}</small>{product.amazingEnabled ? <small>شگفت‌انگیز: {formatCalendarDateTime(product.amazingStartsAt, calendarMode)} تا {formatCalendarDateTime(product.amazingEndsAt, calendarMode)}</small> : null}</div>
-                                <label>
-                                  <input
-                                    type="checkbox"
-                                    checked={product.visible}
-                                    onChange={() => void commit({
-                                      ...state,
-                                      products: state.products.map((item) => item.id === product.id ? { ...item, visible: !item.visible } : item),
-                                    })}
-                                  />
-                                  نمایش
-                                </label>
-                                <button type="button" onClick={() => beginProductEdit(product.id)}>ویرایش</button>
-                                <a className={styles.listPreviewLink} href={`/product/${product.slug}`} target="_blank" rel="noreferrer">مشاهده</a>
-                                {can("catalog.delete") ? (
-                                  <button
-                                    className={styles.dangerButton}
-                                    type="button"
-                                    disabled={productBusy}
-                                    onClick={() => void deleteProduct(product.id, product.title)}
-                                  >
-                                    حذف
-                                  </button>
-                                ) : null}
-                              </article>
-                            ))}
-                          </section>
-                        ))}
-                      </section>
-                    ))}
+                      </nav>
+                      {activeFilterChildren.length > 0 ? (
+                        <div className={styles.productSubcategoryFilter}>
+                          {activeFilterChildren.map((category) => (
+                            <button key={category.slug} type="button" data-active={activeProductCategoryFilter === category.slug} onClick={() => setProductCategoryFilter(category.slug)}>
+                              {category.name}
+                            </button>
+                          ))}
+                        </div>
+                      ) : allManagedCategories.find((category) => category.slug === activeProductCategoryFilter)?.parentSlug ? (
+                        <button
+                          className={styles.backToParentFilter}
+                          type="button"
+                          onClick={() => setProductCategoryFilter(
+                            allManagedCategories.find((category) => category.slug === activeProductCategoryFilter)?.parentSlug ?? "",
+                          )}
+                        >
+                          بازگشت به دستهٔ مادر
+                        </button>
+                      ) : null}
+                      <p>
+                        {categoryPathLabel(activeProductCategoryFilter)} · {filteredAdminProducts.length.toLocaleString("fa-IR")} محصول
+                      </p>
+                    </div>
+                    <div className={styles.productListBody}>
+                      {filteredAdminProducts.length === 0 ? <p>در این دسته هنوز محصولی ثبت نشده است.</p> : null}
+                      {groupedAdminProducts.map((categoryGroup) => (
+                        <section key={categoryGroup.categorySlug} className={styles.productCategoryGroup}>
+                          <h3>{categoryPathLabel(categoryGroup.categorySlug)}</h3>
+                          {categoryGroup.brands.map(([brandLabel, products]) => (
+                            <section key={brandLabel} className={styles.productBrandGroup}>
+                              <h4>{brandLabel} <small>{products.length.toLocaleString("fa-IR")} محصول</small></h4>
+                              {products.map((product) => (
+                                <article key={product.id}>
+                                  {product.imageUrls[0] ? <img src={product.imageUrls[0]} alt={product.title} /> : <span>بدون تصویر</span>}
+                                  <div><strong>{product.title}</strong><small>{product.brand} · {categoryPathLabel(product.category)} · SKU: {product.sku}</small><small>{formatAdminMoney(product.priceMinor, product.currency)} · {product.imageUrls.length.toLocaleString("fa-IR")} تصویر{product.videoUrl ? " · دارای ویدئو" : ""}{product.amazingEnabled ? " · زمان‌بندی شگفت‌انگیز" : ""} · موجود: {(product.stockQuantity - product.reservedQuantity).toLocaleString("fa-IR")} · رزرو: {product.reservedQuantity.toLocaleString("fa-IR")}</small>{product.amazingEnabled ? <small>شگفت‌انگیز: {formatCalendarDateTime(product.amazingStartsAt, calendarMode)} تا {formatCalendarDateTime(product.amazingEndsAt, calendarMode)}</small> : null}</div>
+                                  <label>
+                                    <input
+                                      type="checkbox"
+                                      checked={product.visible}
+                                      onChange={() => void commit({
+                                        ...state,
+                                        products: state.products.map((item) => item.id === product.id ? { ...item, visible: !item.visible } : item),
+                                      })}
+                                    />
+                                    نمایش
+                                  </label>
+                                  <button type="button" onClick={() => beginProductEdit(product.id)}>ویرایش</button>
+                                  <a className={styles.listPreviewLink} href={`/product/${product.slug}`} target="_blank" rel="noreferrer">مشاهده</a>
+                                  {can("catalog.delete") ? (
+                                    <button
+                                      className={styles.dangerButton}
+                                      type="button"
+                                      disabled={productBusy}
+                                      onClick={() => void deleteProduct(product.id, product.title)}
+                                    >
+                                      حذف
+                                    </button>
+                                  ) : null}
+                                </article>
+                              ))}
+                            </section>
+                          ))}
+                        </section>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </section>

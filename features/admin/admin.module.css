@@ -67,7 +67,8 @@
   justify-content: space-between;
   gap: var(--miran-space-3);
   align-items: center;
-  margin-block: var(--miran-space-5);
+  margin-block-start: 0;
+  margin-block-end: var(--miran-space-5);
   border: 1px solid #a7f3d0;
   border-radius: var(--miran-radius-md);
   padding: var(--miran-space-3) var(--miran-space-4);
@@ -97,7 +98,7 @@
 }
 
 .statusBar[data-compact="true"] {
-  margin-block: var(--miran-space-3);
+  margin-block-end: var(--miran-space-3);
   padding-block: var(--miran-space-2);
 }
 
@@ -194,7 +195,8 @@
 .stats span,
 .stats article > span,
 .card > p,
-.productList > p,
+.productListHeader > p,
+.productListBody > p,
 .sellerList > p {
   color: var(--miran-color-text-muted);
 }
@@ -1181,10 +1183,13 @@
   font-size: var(--miran-font-size-sm);
 }
 
-.productList {
+.productList,
+.productListHeader,
+.productListBody {
   display: grid;
   align-content: start;
   gap: var(--miran-space-3);
+  min-width: 0;
 }
 
 .productCategoryGroup,
@@ -1726,14 +1731,29 @@
     height: 100%;
     min-height: 0;
     max-height: 100%;
+    overflow-x: hidden;
+  }
+
+  .productForm {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  .productList {
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow-y: hidden;
+  }
+
+  .productListBody {
+    min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
   }
 
-  .productEditorHeading,
-  .productList > h2 {
+  .productEditorHeading {
     position: sticky;
     top: 0;
     z-index: 4;

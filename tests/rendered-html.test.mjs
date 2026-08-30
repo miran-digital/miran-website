@@ -1862,10 +1862,14 @@ test("keeps the admin topbar compact, status visible, and product panels indepen
   assert.match(css, /--admin-topbar-height:\s*3\.5rem/);
   assert.match(css, /\.topbarInner\s*\{[\s\S]*?height:\s*var\(--admin-topbar-height\)/);
   assert.match(css, /\.statusBar\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?top:\s*var\(--admin-topbar-height\);[\s\S]*?flex-wrap:\s*wrap/);
+  assert.match(css, /\.statusBar\s*\{[^}]*margin-block-start:\s*0;[^}]*margin-block-end:\s*var\(--miran-space-5\);/);
+  assert.match(css, /\.statusBar\[data-compact="true"\]\s*\{[^}]*margin-block-end:\s*var\(--miran-space-3\);/);
   assert.doesNotMatch(css, /100dvh\s*-\s*11\.5rem|4\.5rem/);
   assert.match(css, /\.productForm,\s*\n\.productList\s*\{[\s\S]*?max-height:\s*none;[\s\S]*?overflow:\s*visible/);
+  assert.match(pageSource, /className=\{styles\.productList\}[\s\S]*?className=\{styles\.productListHeader\}[\s\S]*?محصولات هر دسته[\s\S]*?className=\{styles\.productListBody\}/);
   assert.match(css, /@media \(min-width: 64rem\)[\s\S]*?\.productWorkspace\s*\{[\s\S]*?height:\s*100%;[\s\S]*?overflow:\s*hidden/);
-  assert.match(css, /@media \(min-width: 64rem\)[\s\S]*?\.productForm,\s*\n\s*\.productList\s*\{[\s\S]*?overflow-y:\s*auto;[\s\S]*?overscroll-behavior:\s*contain/);
+  assert.match(css, /@media \(min-width: 64rem\)[\s\S]*?\.productList\s*\{[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\);[^}]*overflow-y:\s*hidden;/);
+  assert.match(css, /@media \(min-width: 64rem\)[\s\S]*?\.productListBody\s*\{[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto;[^}]*overscroll-behavior:\s*contain;/);
 });
 
 test("focuses invalid product controls and makes variant management discoverable without weakening deletion", async () => {
@@ -2075,17 +2079,22 @@ test("deletes only authenticated rollback uploads and recognizes legacy HEIC key
   assert.equal(storageKeyFromMediaUrl("https://attacker.example/file.webp"), "");
 });
 
-test("keeps product editor and product list independently scrollable only on desktop", async () => {
-  const css = await readFile(
-    new URL("../features/admin/admin.module.css", import.meta.url),
-    "utf8",
-  );
+test("keeps the product filters fixed above an independently scrollable product body only on desktop", async () => {
+  const [pageSource, css] = await Promise.all([
+    readFile(new URL("../features/admin/admin-page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../features/admin/admin.module.css", import.meta.url), "utf8"),
+  ]);
   assert.match(css, /@media \(min-width: 64rem\)[\s\S]*?\.productWorkspace \{[\s\S]*?height: 100%;[\s\S]*?min-height: 0;[\s\S]*?overflow: hidden;/);
   assert.doesNotMatch(css, /100dvh\s*-\s*11\.5rem/);
-  assert.match(css, /@media \(min-width: 64rem\)[\s\S]*?\.productForm,[\s\S]*?\.productList \{[\s\S]*?min-height: 0;[\s\S]*?overflow-y: auto;[\s\S]*?overflow-x: hidden;[\s\S]*?overscroll-behavior: contain;[\s\S]*?scrollbar-gutter: stable;/);
-  assert.match(css, /@media \(max-width: 47\.99rem\)/);
+  assert.match(pageSource, /className=\{styles\.productListHeader\}[\s\S]*?productCategoryFilter[\s\S]*?productSubcategoryFilter[\s\S]*?backToParentFilter[\s\S]*?filteredAdminProducts\.length[\s\S]*?className=\{styles\.productListBody\}[\s\S]*?groupedAdminProducts/);
+  assert.match(css, /@media \(min-width: 64rem\)[\s\S]*?\.productForm \{[^}]*overflow-y: auto;[^}]*overscroll-behavior: contain;[^}]*scrollbar-gutter: stable;/);
+  assert.match(css, /@media \(min-width: 64rem\)[\s\S]*?\.productList \{[^}]*grid-template-rows: auto minmax\(0, 1fr\);[^}]*overflow-y: hidden;/);
+  assert.match(css, /@media \(min-width: 64rem\)[\s\S]*?\.productListBody \{[^}]*min-height: 0;[^}]*overflow-y: auto;[^}]*overflow-x: hidden;[^}]*overscroll-behavior: contain;[^}]*scrollbar-gutter: stable;/);
   const baseColumns = css.match(/\.productForm,[\s\S]*?\.productList \{[\s\S]*?max-height: none;[\s\S]*?overflow: visible;/);
   assert.ok(baseColumns, "mobile and tablet keep normal page scrolling");
+  const mobileCss = css.slice(css.indexOf("@media (max-width: 47.99rem)"), css.indexOf("@media (min-width: 64rem)"));
+  assert.doesNotMatch(mobileCss, /\.productListBody\s*\{[^}]*overflow-y:\s*auto/);
+  assert.doesNotMatch(mobileCss, /\.productList\s*\{[^}]*height:\s*100%/);
 });
 
 test("reports real launch blockers from catalog and seller data", async () => {
