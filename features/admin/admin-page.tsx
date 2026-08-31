@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Container } from "@/components/ui";
 import type { CatalogCategory } from "@/features/catalog/catalog-gateway";
 import {
@@ -101,12 +101,24 @@ import {
 } from "./product-image-optimizer";
 
 type AdminTab = "overview" | "content" | "categories" | "banners" | "products" | "orders" | "customers" | "reports" | "sellers";
-type SaveStatus = "loading" | "saved" | "saving" | "error";
+type SaveStatus = "idle" | "loading" | "saved" | "saving" | "error";
 type StagedProductImage = { key: string; file: File; previewUrl: string };
 type StagedProductVideo = { file: File; previewUrl: string };
 const VARIANT_DELETE_CONFIRMATION =
   "فقط همین تنوع حذف می‌شود. خود محصول، تصاویر، ویدیو، قیمت اصلی و سایر تنوع‌ها باقی می‌مانند. ادامه می‌دهید؟";
 const PRODUCT_VALIDATION_MESSAGE = "لطفاً فیلد مشخص‌شده را بررسی و اصلاح کنید.";
+const SECURE_LOGIN_MESSAGE = "ورود امن فعال است؛ اطلاعات در پایگاه‌داده ذخیره می‌شود.";
+const SAVE_SUCCESS_MESSAGE = "اطلاعات با موفقیت در پایگاه‌داده ذخیره شد.";
+const PRODUCT_FIELD_VALIDATION_MESSAGES: Record<string, string> = {
+  title: "عنوان فارسی هنوز وارد نشده است.",
+  slug: "نامک انگلیسی وارد نشده یا قالب آن صحیح نیست.",
+  sku: "کد کالا (SKU) هنوز وارد نشده است.",
+  category: "دسته‌بندی محصول انتخاب نشده است.",
+  brand: "برند محصول انتخاب نشده است.",
+  basePrice: "قیمت پایه وارد نشده یا معتبر نیست.",
+  discountValue: "مقدار تخفیف واردشده معتبر نیست.",
+  stockQuantity: "موجودی کل وارد نشده یا کمتر از مقدار رزروشده است.",
+};
 const nextOrderStatuses: Record<OrderStatus, readonly OrderStatus[]> = {
   new: ["confirmed", "cancelled"],
   confirmed: ["packing", "cancelled"],
@@ -233,12 +245,13 @@ function optionalCalendarDateTime(
 function focusProductControl(form: HTMLFormElement, fieldName?: string) {
   const selector = fieldName ? `[name="${CSS.escape(fieldName)}"]` : ":invalid";
   const control = form.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(selector);
-  if (!control) return;
+  if (!control) return fieldName ?? "";
   control.setAttribute("aria-invalid", "true");
   requestAnimationFrame(() => {
     control.focus({ preventScroll: true });
     control.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
   });
+  return control.name;
 }
 
 function productErrorField(message: string) {
@@ -247,9 +260,21 @@ function productErrorField(message: string) {
   if (message.includes("درصد تخفیف") || message.includes("مبلغ")) return "discountValue";
   if (message.includes("شگفت‌انگیز")) return "amazingStartsDate";
   if (message.includes("تنوع")) return "newVariantTitle";
+  if (message.includes("تصویر")) return "productImages";
+  if (message.includes("موجودی") || message.includes("رزرو")) return "stockQuantity";
   if (message.includes("برند")) return "brand";
   if (message.includes("دسته")) return "category";
   return undefined;
+}
+
+class ProductValidationError extends Error {
+  fieldName?: string;
+
+  constructor(message: string, fieldName = productErrorField(message)) {
+    super(message);
+    this.name = "ProductValidationError";
+    this.fieldName = fieldName;
+  }
 }
 
 export function AdminPage({
@@ -265,8 +290,22 @@ export function AdminPage({
 }) {
   const [tab, setTab] = useState<AdminTab>("overview");
   const [state, setState] = useState<AdminState>(createDefaultAdminState);
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>("loading");
-  const [statusMessage, setStatusMessage] = useState("");
+  const [saveStatus, setSaveStatusState] = useState<SaveStatus>("loading");
+  const [statusMessage, setStatusMessageState] = useState("");
+  const saveStatusRef = useRef<SaveStatus>("loading");
+  const statusMessageRef = useRef("");
+  const setSaveStatus = useCallback((nextStatus: SaveStatus) => {
+    saveStatusRef.current = nextStatus;
+    setSaveStatusState(nextStatus);
+  }, []);
+  const setStatusMessage = useCallback((nextMessage: string) => {
+    statusMessageRef.current = nextMessage;
+    setStatusMessageState(nextMessage);
+  }, []);
+  const [activeProductValidation, setActiveProductValidation] = useState<{
+    fieldName: string;
+    message: string;
+  } | null>(null);
   const [sellers, setSellers] = useState<SellerApplication[]>([]);
   const [selectedSellerId, setSelectedSellerId] = useState("");
   const [orders, setOrders] = useState<StoreOrder[]>([]);
@@ -342,6 +381,7 @@ export function AdminPage({
         setSellers(applications);
         setOrders(loadedOrders);
         setBankTransferReceipts(loadedReceipts);
+        setStatusMessage(SECURE_LOGIN_MESSAGE);
         setSaveStatus("saved");
       })
       .catch((error: unknown) => {
@@ -354,7 +394,22 @@ export function AdminPage({
     return () => {
       active = false;
     };
-  }, [permissions]);
+  }, [permissions, setSaveStatus, setStatusMessage]);
+
+  useEffect(() => {
+    if (saveStatus !== "saved") return;
+    const scheduledMessage = statusMessage;
+    const timeoutMs = scheduledMessage === SECURE_LOGIN_MESSAGE ? 4_000 : 3_500;
+    const timeoutId = window.setTimeout(() => {
+      if (
+        saveStatusRef.current !== "saved" ||
+        statusMessageRef.current !== scheduledMessage
+      ) return;
+      setStatusMessage("");
+      setSaveStatus("idle");
+    }, timeoutMs);
+    return () => window.clearTimeout(timeoutId);
+  }, [saveStatus, setSaveStatus, setStatusMessage, statusMessage]);
 
   useEffect(() => () => {
     for (const url of productPreviewUrls.current) URL.revokeObjectURL(url);
@@ -823,6 +878,8 @@ export function AdminPage({
     const pendingUploads: { url: string; cleanupToken: string }[] = [];
     if (!siteName) return;
     setBrandingBusy(true);
+    setSaveStatus("saving");
+    setStatusMessage("");
     try {
       let logoUrl = data.get("removeLogo") ? "" : state.branding.logoUrl;
       if (file instanceof File && file.size > 0) {
@@ -909,6 +966,8 @@ export function AdminPage({
     const imageFile = data.get("image");
     const pendingUploads: { url: string; cleanupToken: string }[] = [];
     setCategoryBusy(true);
+    setSaveStatus("saving");
+    setStatusMessage("");
     try {
       let imageUrl = data.get("removeImage") ? "" : editingCategory?.imageUrl ?? "";
       if (imageFile instanceof File && imageFile.size > 0) {
@@ -1142,6 +1201,7 @@ export function AdminPage({
     const mobileFile = data.get("mobileImage");
     const pendingUploads: { url: string; cleanupToken: string }[] = [];
     setBannerBusy(true);
+    setSaveStatus("saving");
     setStatusMessage("");
     try {
       let desktopImageUrl = data.get("removeDesktopImage")
@@ -1213,19 +1273,34 @@ export function AdminPage({
     return next;
   }
 
+  function reportProductValidation(
+    form: HTMLFormElement,
+    fieldName?: string,
+    message?: string,
+  ) {
+    const focusedField = focusProductControl(form, fieldName);
+    const nextMessage = message ??
+      PRODUCT_FIELD_VALIDATION_MESSAGES[focusedField] ??
+      PRODUCT_VALIDATION_MESSAGE;
+    setActiveProductValidation(
+      focusedField ? { fieldName: focusedField, message: nextMessage } : null,
+    );
+    setSaveStatus("error");
+    setStatusMessage(nextMessage);
+  }
+
   async function addProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     form.querySelectorAll('[aria-invalid="true"]').forEach((control) => control.removeAttribute("aria-invalid"));
     if (!form.checkValidity()) {
-      setSaveStatus("error");
-      setStatusMessage(PRODUCT_VALIDATION_MESSAGE);
-      focusProductControl(form);
+      reportProductValidation(form);
       return;
     }
     const data = new FormData(form);
     const title = String(data.get("title") ?? "").trim();
     const slug = normalizeSlug(String(data.get("slug") ?? ""));
+    const sku = String(data.get("sku") ?? "").trim().toUpperCase().slice(0, 80);
     const brand = String(data.get("brand") ?? "").trim().slice(0, 100);
     const category = normalizeSlug(String(data.get("category") ?? ""));
     const currency = IRAN_CURRENCY;
@@ -1259,6 +1334,7 @@ export function AdminPage({
     if (
       !title ||
       !slug ||
+      !sku ||
       !brand ||
       !selectableCategories.some((item) => item.slug === category) ||
       !Number.isFinite(basePrice) ||
@@ -1272,22 +1348,24 @@ export function AdminPage({
         ? "title"
         : !slug
           ? "slug"
-          : !selectableCategories.some((item) => item.slug === category)
-            ? "category"
-            : !brand
-              ? "brand"
-              : !Number.isFinite(basePrice) || basePrice < 0
-                ? "basePrice"
-                : !Number.isFinite(discountValue) || discountValue < 0
-                  ? "discountValue"
-                  : "stockQuantity";
-      setSaveStatus("error");
-      setStatusMessage(PRODUCT_VALIDATION_MESSAGE);
-      focusProductControl(form, fieldName);
+          : !sku
+            ? "sku"
+            : !selectableCategories.some((item) => item.slug === category)
+              ? "category"
+              : !brand
+                ? "brand"
+                : !Number.isFinite(basePrice) || basePrice < 0
+                  ? "basePrice"
+                  : !Number.isFinite(discountValue) || discountValue < 0
+                    ? "discountValue"
+                    : "stockQuantity";
+      reportProductValidation(form, fieldName);
       return;
     }
 
+    setActiveProductValidation(null);
     setProductBusy(true);
+    setSaveStatus("saving");
     setStatusMessage("");
     try {
       if (
@@ -1296,7 +1374,7 @@ export function AdminPage({
             product.slug === slug && product.id !== editingProduct?.id,
         )
       ) {
-        throw new Error("نامک این محصول قبلاً استفاده شده است.");
+        throw new ProductValidationError("نامک این محصول قبلاً استفاده شده است.");
       }
       const managedBrand = state.brands.find(
         (item) => item.name.trim().toLocaleLowerCase("fa") === brand.toLocaleLowerCase("fa"),
@@ -1311,23 +1389,22 @@ export function AdminPage({
         !isCategoryWithin(category, managedBrand.categorySlug) &&
         !unchangedLegacyBrand
       ) {
-        throw new Error(
+        throw new ProductValidationError(
           `برند «${managedBrand.name}» فقط در ${categoryPathLabel(managedBrand.categorySlug)} قابل انتخاب است.`,
         );
       }
-      const sku = String(data.get("sku") ?? "").trim().toUpperCase().slice(0, 80);
       if (
         state.products.some(
           (product) => product.sku === sku && product.id !== editingProduct?.id,
         )
       ) {
-        throw new Error("کد کالا (SKU) تکراری است.");
+        throw new ProductValidationError("کد کالا (SKU) تکراری است.");
       }
       if (!(["none", "percentage", "amount"] as const).includes(discountType)) {
-        throw new Error("نوع تخفیف معتبر نیست.");
+        throw new ProductValidationError("نوع تخفیف معتبر نیست.", "discountType");
       }
       if (discountType === "percentage" && discountValue > 100) {
-        throw new Error("درصد تخفیف باید بین صفر تا صد باشد.");
+        throw new ProductValidationError("درصد تخفیف باید بین صفر تا صد باشد.");
       }
       const discount = calculateProductDiscount({
         basePrice,
@@ -1341,7 +1418,7 @@ export function AdminPage({
         !Number.isSafeInteger(discount.discountRial) ||
         !Number.isSafeInteger(discount.finalPriceRial)
       ) {
-        throw new Error("مبلغ واردشده بزرگ‌تر از محدودهٔ امن قیمت است.");
+        throw new ProductValidationError("مبلغ واردشده بزرگ‌تر از محدودهٔ امن قیمت است.");
       }
       if (
         amazingEnabled &&
@@ -1349,13 +1426,13 @@ export function AdminPage({
           !amazingEndsAt ||
           Date.parse(amazingStartsAt) >= Date.parse(amazingEndsAt))
       ) {
-        throw new Error("برای پیشنهاد شگفت‌انگیز، شروع و پایان معتبر وارد کنید.");
+        throw new ProductValidationError("برای پیشنهاد شگفت‌انگیز، شروع و پایان معتبر وارد کنید.");
       }
       const preservedImages = (editingProduct?.imageUrls ?? []).filter(
         (url) => !removedImages.has(url),
       );
       if (preservedImages.length + files.length > MAX_PRODUCT_IMAGES) {
-        throw new Error("برای هر محصول حداکثر ۱۰ تصویر مجاز است.");
+        throw new ProductValidationError("برای هر محصول حداکثر ۱۰ تصویر مجاز است.");
       }
       const uploadedImages: { key: string; url: string }[] = [];
       for (const item of files) {
@@ -1405,17 +1482,17 @@ export function AdminPage({
         const value = String(data.get(`${prefix}Value`) ?? "").trim().slice(0, 500);
         if (!code && !label && !value) return null;
         if (!code || !label || !value) {
-          throw new Error("کد، عنوان و مقدار ویژگی جدید باید کامل باشد.");
+          throw new ProductValidationError("کد، عنوان و مقدار ویژگی جدید باید کامل باشد.", `${prefix}Value`);
         }
         const requestedDataType = String(data.get(`${prefix}DataType`) ?? "text");
         const dataType: AdminAttributeDataType = requestedDataType === "number" || requestedDataType === "boolean"
           ? requestedDataType
           : "text";
         if (dataType === "number" && !Number.isFinite(Number(value))) {
-          throw new Error(`مقدار عددی ویژگی «${label}» معتبر نیست.`);
+          throw new ProductValidationError(`مقدار عددی ویژگی «${label}» معتبر نیست.`, `${prefix}Value`);
         }
         if (dataType === "boolean" && value !== "true" && value !== "false") {
-          throw new Error(`مقدار بله/خیر ویژگی «${label}» معتبر نیست.`);
+          throw new ProductValidationError(`مقدار بله/خیر ویژگی «${label}» معتبر نیست.`, `${prefix}Value`);
         }
         const scopedCode = `${category}:${code}`;
         const known = knownDefinitions.get(scopedCode);
@@ -1430,7 +1507,7 @@ export function AdminPage({
           comparable: data.get(`${prefix}Comparable`) === "on",
         };
         if (known && (known.label !== label || known.dataType !== dataType)) {
-          throw new Error(`کد ویژگی «${code}» قبلاً با تعریف دیگری ثبت شده است.`);
+          throw new ProductValidationError(`کد ویژگی «${code}» قبلاً با تعریف دیگری ثبت شده است.`, `${prefix}Code`);
         }
         knownDefinitions.set(scopedCode, definition);
         return {
@@ -1494,7 +1571,7 @@ export function AdminPage({
       }
       const variantSkus = variants.map((variant) => variant.sku).filter(Boolean);
       if (new Set(variantSkus).size !== variantSkus.length || variantSkus.includes(sku)) {
-        throw new Error("کد SKU محصول و تنوع‌ها باید یکتا باشد.");
+        throw new ProductValidationError("کد SKU محصول و تنوع‌ها باید یکتا باشد.");
       }
       const otherCatalogSkus = new Set(
         state.products
@@ -1503,14 +1580,14 @@ export function AdminPage({
           .filter(Boolean),
       );
       if (otherCatalogSkus.has(sku) || variantSkus.some((item) => otherCatalogSkus.has(item))) {
-        throw new Error("SKU محصول یا یکی از تنوع‌ها در کاتالوگ دیگری استفاده شده است.");
+        throw new ProductValidationError("SKU محصول یا یکی از تنوع‌ها در کاتالوگ دیگری استفاده شده است.");
       }
       for (const variant of variants) {
         if (!variant.title || !variant.sku || variant.priceMinor < 0) {
-          throw new Error("عنوان، SKU و قیمت هر تنوع باید کامل باشد.");
+          throw new ProductValidationError("عنوان، SKU و قیمت هر تنوع باید کامل باشد.");
         }
         if (variant.compareAtPriceMinor > 0 && variant.compareAtPriceMinor <= variant.priceMinor) {
-          throw new Error(`قیمت قبل از تخفیف تنوع «${variant.title}» معتبر نیست.`);
+          throw new ProductValidationError(`قیمت قبل از تخفیف تنوع «${variant.title}» معتبر نیست.`);
         }
       }
       for (const attributeGroup of [
@@ -1519,10 +1596,10 @@ export function AdminPage({
       ]) {
         const codes = new Set<string>();
         for (const attribute of attributeGroup) {
-          if (!attribute.value) throw new Error(`مقدار ویژگی «${attribute.label}» خالی است.`);
-          if (codes.has(attribute.code)) throw new Error(`ویژگی «${attribute.label}» تکراری است.`);
+          if (!attribute.value) throw new ProductValidationError(`مقدار ویژگی «${attribute.label}» خالی است.`);
+          if (codes.has(attribute.code)) throw new ProductValidationError(`ویژگی «${attribute.label}» تکراری است.`);
           if (attribute.dataType === "number" && !Number.isFinite(Number(attribute.value))) {
-            throw new Error(`مقدار عددی ویژگی «${attribute.label}» معتبر نیست.`);
+            throw new ProductValidationError(`مقدار عددی ویژگی «${attribute.label}» معتبر نیست.`);
           }
           codes.add(attribute.code);
         }
@@ -1602,26 +1679,33 @@ export function AdminPage({
     } catch (error) {
       const cleanupComplete = await cleanupUploadedMedia(pendingUploads);
       const message = error instanceof Error ? error.message : "ساخت محصول ممکن نشد.";
-      setSaveStatus("error");
-      setStatusMessage(
-        `${message}${
-          cleanupComplete ? "" : " پاک‌سازی فایل موقت نیز ممکن نشد؛ دوباره تلاش کنید."
-        }`,
-      );
-      focusProductControl(form, productErrorField(message));
+      const fullMessage = `${message}${
+        cleanupComplete ? "" : " پاک‌سازی فایل موقت نیز ممکن نشد؛ دوباره تلاش کنید."
+      }`;
+      if (error instanceof ProductValidationError) {
+        reportProductValidation(form, error.fieldName, fullMessage);
+      } else {
+        setActiveProductValidation(null);
+        setSaveStatus("error");
+        setStatusMessage(fullMessage);
+        focusProductControl(form, productErrorField(message));
+      }
     } finally {
       setProductBusy(false);
     }
   }
 
   async function updateOrder(order: StoreOrder, status: OrderStatus) {
+    setSaveStatus("saving");
     setStatusMessage("");
     try {
       const updated = await updateAdminOrderStatus(order.id, status);
       setOrders((items) =>
         items.map((item) => item.id === updated.id ? updated : item),
       );
+      setSaveStatus("saved");
     } catch (error) {
+      setSaveStatus("error");
       setStatusMessage(
         error instanceof Error ? error.message : "به‌روزرسانی سفارش ممکن نشد.",
       );
@@ -1635,6 +1719,7 @@ export function AdminPage({
       : `سفارش «${order.orderNumber}» و تمام اطلاعات وابسته برای همیشه حذف شود؟`;
     if (!window.confirm(warning)) return;
     setOrderBusy(true);
+    setSaveStatus("saving");
     setStatusMessage("");
     try {
       await removeAdminOrder(order.id);
@@ -1697,8 +1782,9 @@ export function AdminPage({
       );
       return;
     }
-    setStatusMessage("");
     setSellerBusy(true);
+    setSaveStatus("saving");
+    setStatusMessage("");
     try {
       await updateSellerApplicationStatus(selectedSeller.id, review);
       setSellers((items) =>
@@ -1721,6 +1807,7 @@ export function AdminPage({
     if (!can("sellers.delete") || sellerBusy) return;
     if (!window.confirm(`فروشنده «${seller.storeName}»، پیشنهادهای فروش و مدارک خصوصی او برای همیشه حذف شوند؟`)) return;
     setSellerBusy(true);
+    setSaveStatus("saving");
     setStatusMessage("");
     try {
       await removeSellerApplication(seller.id);
@@ -1778,6 +1865,7 @@ export function AdminPage({
   async function reviewReceipt(status: "approved" | "rejected") {
     if (!selectedOrderReceipt || receiptBusy) return;
     setReceiptBusy(true);
+    setSaveStatus("saving");
     setStatusMessage("");
     try {
       const receipt = await reviewAdminBankTransferReceipt(
@@ -1871,33 +1959,38 @@ export function AdminPage({
     }
   }
 
+  const messageCenterText = saveStatus === "idle"
+    ? ""
+    : saveStatus === "loading"
+      ? statusMessage || "در حال اتصال به پایگاه‌داده…"
+      : saveStatus === "saving"
+        ? "در حال ذخیره…"
+        : saveStatus === "error"
+          ? statusMessage || "خطا در ذخیره"
+          : statusMessage || SAVE_SUCCESS_MESSAGE;
+
   return (
     <main className={`${styles.page} admin-page`}>
       <header className={styles.topbar}>
         <Container size="wide" className={styles.topbarInner}>
-          <div>
-            <strong>مدیریت</strong>
+          <div
+            className={styles.messageCenter}
+            data-status={saveStatus}
+            data-empty={!messageCenterText}
+            role={saveStatus === "error" ? "alert" : "status"}
+            aria-live={saveStatus === "error" ? "assertive" : "polite"}
+            aria-atomic="true"
+          >
+            {messageCenterText ? <span>{messageCenterText}</span> : null}
           </div>
           <div className={styles.userMenu}>
-            <span dir="ltr">MIRAN</span>
+            <strong>پنل مدیریت</strong>
+            <span aria-hidden="true">|</span>
             <a href={signOutHref}>خروج</a>
           </div>
         </Container>
       </header>
       <Container size="wide" className={styles.adminBody}>
-        <div className={styles.statusBar} data-status={saveStatus} data-compact={tab === "products"} role="status">
-          <span>
-            {saveStatus === "loading"
-              ? "در حال اتصال به پایگاه‌داده…"
-              : saveStatus === "saving"
-                ? "در حال ذخیره…"
-                : saveStatus === "error"
-                  ? statusMessage || "خطا در ذخیره"
-                  : "ورود امن فعال است؛ اطلاعات در پایگاه‌داده ذخیره می‌شود."}
-          </span>
-          <a href="/">مشاهده فروشگاه</a>
-        </div>
-
         <div className={styles.layout} data-products={tab === "products"}>
           <nav className={styles.sidebar} aria-label="بخش‌های مدیریت">
             {(
@@ -2426,7 +2519,18 @@ export function AdminPage({
                       if (
                         (control instanceof HTMLInputElement || control instanceof HTMLSelectElement || control instanceof HTMLTextAreaElement) &&
                         control.checkValidity()
-                      ) control.removeAttribute("aria-invalid");
+                      ) {
+                        control.removeAttribute("aria-invalid");
+                        if (
+                          activeProductValidation?.fieldName === control.name &&
+                          activeProductValidation.message === statusMessage &&
+                          saveStatus === "error"
+                        ) {
+                          setActiveProductValidation(null);
+                          setStatusMessage("");
+                          setSaveStatus("idle");
+                        }
+                      }
                     }}
                     noValidate
                   >
@@ -2697,6 +2801,7 @@ export function AdminPage({
                       تصاویر محصول
                       <input
                         key={`product-images-${productMediaInputVersion}`}
+                        name="productImages"
                         type="file"
                         multiple
                         accept={PRODUCT_IMAGE_ACCEPT}
@@ -2704,8 +2809,11 @@ export function AdminPage({
                           const files = Array.from(event.currentTarget.files ?? []);
                           const invalidFile = files.find((file) => getProductImageValidationError(file));
                           if (invalidFile) {
-                            setSaveStatus("error");
-                            setStatusMessage(getProductImageValidationError(invalidFile));
+                            reportProductValidation(
+                              event.currentTarget.form!,
+                              "productImages",
+                              getProductImageValidationError(invalidFile),
+                            );
                             event.currentTarget.value = "";
                             return;
                           }
@@ -2720,8 +2828,11 @@ export function AdminPage({
                             (url) => !removedProductImages.includes(url),
                           ).length;
                           if (remainingExistingCount + selectedProductImages.length + uniqueFiles.length > MAX_PRODUCT_IMAGES) {
-                            setSaveStatus("error");
-                            setStatusMessage("برای هر محصول حداکثر ۱۰ تصویر مجاز است.");
+                            reportProductValidation(
+                              event.currentTarget.form!,
+                              "productImages",
+                              "برای هر محصول حداکثر ۱۰ تصویر مجاز است.",
+                            );
                             event.currentTarget.value = "";
                             return;
                           }
@@ -2732,7 +2843,7 @@ export function AdminPage({
                           });
                           setSelectedProductImages((current) => [...current, ...staged]);
                           if (!primaryProductImage && staged[0]) setPrimaryProductImage(`new:${staged[0].key}`);
-                          setSaveStatus("saved");
+                          setSaveStatus("idle");
                           setStatusMessage("");
                           event.currentTarget.value = "";
                         }}
@@ -2758,14 +2869,18 @@ export function AdminPage({
                       ویدئوی کوتاه محصول
                       <input
                         key={`product-video-${productMediaInputVersion}`}
+                        name="productVideo"
                         type="file"
                         accept="video/mp4,video/webm"
                         onChange={(event) => {
                           const file = event.currentTarget.files?.[0];
                           if (!file) return;
                           if (file.size <= 0 || file.size > 25_000_000 || !new Set(["video/mp4", "video/webm"]).has(file.type)) {
-                            setSaveStatus("error");
-                            setStatusMessage("ویدئو باید MP4 یا WebM و حداکثر ۲۵ مگابایت باشد.");
+                            reportProductValidation(
+                              event.currentTarget.form!,
+                              "productVideo",
+                              "ویدئو باید MP4 یا WebM و حداکثر ۲۵ مگابایت باشد.",
+                            );
                             event.currentTarget.value = "";
                             return;
                           }

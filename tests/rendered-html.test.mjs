@@ -987,7 +987,8 @@ test("keeps admin chrome separate from the storefront and within the worker PBKD
     readFile(new URL("../db/admin-owner-auth-repository.ts", import.meta.url), "utf8"),
   ]);
   assert.match(adminSource, /admin-page/);
-  assert.match(adminSource, /<strong>مدیریت<\/strong>[\s\S]*MIRAN[\s\S]*>خروج<\/a>/);
+  assert.match(adminSource, /className=\{styles\.messageCenter\}[\s\S]*<strong>پنل مدیریت<\/strong>[\s\S]*href=\{signOutHref\}>خروج<\/a>/);
+  assert.doesNotMatch(adminSource, /<strong>مدیریت<\/strong>|<span dir="ltr">MIRAN<\/span>|>مشاهده فروشگاه<\/a>/);
   assert.doesNotMatch(adminSource, /مرکز مدیریت|ایمیل حساب ChatGPT|userDisplayName|userEmail/);
   assert.match(storefrontCss, /body:has\(\.admin-page\) > \.site-header/);
   assert.match(adminCss, /\.topbar\s*\{[\s\S]*position: sticky;[\s\S]*top: 0;/);
@@ -1852,18 +1853,33 @@ test("renders only the stored English product title below the Persian detail tit
   assert.match(productPageSource, /name: product\.title/);
 });
 
-test("keeps the admin topbar compact, status visible, and product panels independently scrollable", async () => {
+test("uses the compact admin topbar as the only accessible message center and preserves product scrolling", async () => {
   const [pageSource, css] = await Promise.all([
     readFile(new URL("../features/admin/admin-page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../features/admin/admin.module.css", import.meta.url), "utf8"),
   ]);
   assert.match(pageSource, /className=\{styles\.adminBody\}/);
-  assert.match(pageSource, /className=\{styles\.statusBar\}[\s\S]*role="status"/);
+  assert.doesNotMatch(pageSource, /styles\.statusBar|>مشاهده فروشگاه<\/a>|<strong>مدیریت<\/strong>|<span dir="ltr">MIRAN<\/span>/);
+  assert.doesNotMatch(css, /\.statusBar/);
+  assert.match(pageSource, /className=\{styles\.messageCenter\}[\s\S]*role=\{saveStatus === "error" \? "alert" : "status"\}[\s\S]*aria-live=\{saveStatus === "error" \? "assertive" : "polite"\}/);
+  assert.match(pageSource, /<strong>پنل مدیریت<\/strong>[\s\S]*aria-hidden="true">\|<\/span>[\s\S]*href=\{signOutHref\}>خروج<\/a>/);
   assert.match(css, /--admin-topbar-height:\s*3\.5rem/);
   assert.match(css, /\.topbarInner\s*\{[\s\S]*?height:\s*var\(--admin-topbar-height\)/);
-  assert.match(css, /\.statusBar\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?top:\s*var\(--admin-topbar-height\);[\s\S]*?flex-wrap:\s*wrap/);
-  assert.match(css, /\.statusBar\s*\{[^}]*margin-block-start:\s*0;[^}]*margin-block-end:\s*var\(--miran-space-5\);/);
-  assert.match(css, /\.statusBar\[data-compact="true"\]\s*\{[^}]*margin-block-end:\s*var\(--miran-space-3\);/);
+  assert.match(css, /\.messageCenter\s*\{[^}]*flex:\s*1 1 auto;[^}]*min-width:\s*0;/);
+  assert.match(css, /\.userMenu\s*\{[^}]*flex:\s*0 0 auto;[^}]*white-space:\s*nowrap;/);
+  const messageCenterCss = css.match(/\.messageCenter\s*\{([^}]*)\}/)?.[1] ?? "";
+  assert.doesNotMatch(messageCenterCss, /background|border/);
+  assert.match(css, /@media \(min-width: 64rem\)[\s\S]*?\.adminBody\s*\{[^}]*grid-template-rows:\s*minmax\(0, 1fr\);/);
+  assert.doesNotMatch(css, /grid-template-rows:\s*auto minmax\(0, 1fr\);[\s\S]*?\.adminBody/);
+
+  assert.ok(pageSource.includes('const SECURE_LOGIN_MESSAGE = "ورود امن فعال است؛ اطلاعات در پایگاه‌داده ذخیره می‌شود.";'));
+  assert.ok(pageSource.includes('const SAVE_SUCCESS_MESSAGE = "اطلاعات با موفقیت در پایگاه‌داده ذخیره شد.";'));
+  assert.match(pageSource, /scheduledMessage === SECURE_LOGIN_MESSAGE \? 4_000 : 3_500/);
+  assert.match(pageSource, /if \(saveStatus !== "saved"\) return;/);
+  assert.match(pageSource, /saveStatusRef\.current !== "saved"[\s\S]*statusMessageRef\.current !== scheduledMessage/);
+  assert.match(pageSource, /return \(\) => window\.clearTimeout\(timeoutId\)/);
+  assert.match(pageSource, /saveStatus === "saving"[\s\S]*\? "در حال ذخیره…"/);
+  assert.match(pageSource, /saveStatus === "error"[\s\S]*statusMessage \|\| "خطا در ذخیره"/);
   assert.doesNotMatch(css, /100dvh\s*-\s*11\.5rem|4\.5rem/);
   assert.match(css, /\.productForm,\s*\n\.productList\s*\{[\s\S]*?max-height:\s*none;[\s\S]*?overflow:\s*visible/);
   assert.match(pageSource, /className=\{styles\.productList\}[\s\S]*?className=\{styles\.productListHeader\}[\s\S]*?محصولات هر دسته[\s\S]*?className=\{styles\.productListBody\}/);
@@ -1882,8 +1898,20 @@ test("focuses invalid product controls and makes variant management discoverable
   assert.match(pageSource, /focus\(\{ preventScroll: true \}\)/);
   assert.match(pageSource, /scrollIntoView\(\{ behavior: "smooth", block: "center", inline: "nearest" \}\)/);
   assert.match(pageSource, /onInputCapture=[\s\S]*?removeAttribute\("aria-invalid"\)/);
+  assert.match(pageSource, /activeProductValidation\?\.fieldName === control\.name[\s\S]*activeProductValidation\.message === statusMessage[\s\S]*saveStatus === "error"/);
   assert.match(pageSource, /noValidate/);
-  assert.match(pageSource, /لطفاً فیلد مشخص‌شده را بررسی و اصلاح کنید\./);
+  for (const message of [
+    "عنوان فارسی هنوز وارد نشده است.",
+    "نامک انگلیسی وارد نشده یا قالب آن صحیح نیست.",
+    "کد کالا (SKU) هنوز وارد نشده است.",
+    "دسته‌بندی محصول انتخاب نشده است.",
+    "برند محصول انتخاب نشده است.",
+    "قیمت پایه وارد نشده یا معتبر نیست.",
+    "مقدار تخفیف واردشده معتبر نیست.",
+    "موجودی کل وارد نشده یا کمتر از مقدار رزروشده است.",
+  ]) assert.ok(pageSource.includes(message), `missing field-specific validation: ${message}`);
+  assert.match(pageSource, /reportProductValidation\(form, fieldName\)/);
+  assert.match(pageSource, /error instanceof ProductValidationError[\s\S]*reportProductValidation\(form, error\.fieldName, fullMessage\)/);
   assert.match(css, /\[aria-invalid="true"\][\s\S]*?border-color:\s*var\(--miran-color-danger\)/);
 
   assert.match(pageSource, /رفتن به تنوع‌ها \(\{editingProduct\.variants\.length\.toLocaleString\("fa-IR"\)\}\)/);

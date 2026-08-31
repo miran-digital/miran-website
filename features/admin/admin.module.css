@@ -16,90 +16,83 @@
 
 .topbarInner {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: var(--miran-space-4);
   align-items: center;
   min-height: var(--admin-topbar-height);
   height: var(--admin-topbar-height);
 }
 
-.topbarInner > div {
+.messageCenter {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
-  gap: var(--miran-space-3);
-  align-items: baseline;
+  gap: var(--miran-space-2);
+  align-items: center;
+  color: #dbeafe;
+  font-size: var(--miran-font-size-sm);
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.messageCenter::before {
+  flex: 0 0 auto;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+
+.messageCenter[data-empty="true"]::before {
+  display: none;
+}
+
+.messageCenter span {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.messageCenter[data-status="loading"],
+.messageCenter[data-status="saving"] {
+  color: #bfdbfe;
+}
+
+.messageCenter[data-status="saved"] {
+  color: #bbf7d0;
+}
+
+.messageCenter[data-status="error"] {
+  color: #fecaca;
 }
 
 .userMenu {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: var(--miran-space-3);
-}
-
-.userMenu small {
-  color: #dbeafe;
-}
-
-.topbarInner span {
-  color: #94a3b8;
+  gap: var(--miran-space-2);
+  white-space: nowrap;
   font-size: var(--miran-font-size-sm);
 }
 
-.userMenu > span {
+.userMenu strong {
   color: #fff;
   font-weight: 900;
-  letter-spacing: 0.05em;
 }
 
-.topbarInner a {
-  border: 1px solid rgb(255 255 255 / 0.35);
-  border-radius: var(--miran-radius-md);
-  padding: var(--miran-space-2) var(--miran-space-3);
-  font-size: var(--miran-font-size-sm);
+.userMenu span {
+  color: rgb(255 255 255 / 0.65);
+}
+
+.userMenu a {
+  color: #fff;
   font-weight: 800;
-}
-
-.statusBar {
-  position: sticky;
-  top: var(--admin-topbar-height);
-  z-index: 45;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: var(--miran-space-3);
-  align-items: center;
-  margin-block-start: 0;
-  margin-block-end: var(--miran-space-5);
-  border: 1px solid #a7f3d0;
-  border-radius: var(--miran-radius-md);
-  padding: var(--miran-space-3) var(--miran-space-4);
-  background: #ecfdf5;
-  color: #065f46;
-  font-size: var(--miran-font-size-sm);
-  font-weight: 800;
-  overflow-wrap: anywhere;
-}
-
-.statusBar[data-status="saving"],
-.statusBar[data-status="loading"] {
-  border-color: #bfdbfe;
-  background: #eff6ff;
-  color: #1d4ed8;
-}
-
-.statusBar[data-status="error"] {
-  border-color: #fecaca;
-  background: #fef2f2;
-  color: #b91c1c;
-}
-
-.statusBar a {
-  flex: 0 0 auto;
   text-decoration: underline;
-}
-
-.statusBar[data-compact="true"] {
-  margin-block-end: var(--miran-space-3);
-  padding-block: var(--miran-space-2);
+  text-underline-offset: 0.18em;
 }
 
 .securityNotice {
@@ -1670,7 +1663,7 @@
 
   .adminBody {
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
     min-height: 0;
     height: calc(100dvh - var(--admin-topbar-height));
     overflow: hidden;
