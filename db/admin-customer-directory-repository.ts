@@ -168,7 +168,7 @@ async function resolveCustomerEmail(database: D1Database, customerId: string, au
   const separator = customerId.indexOf(":");
   const kind = customerId.slice(0, separator);
   const id = customerId.slice(separator + 1);
-  if (separator < 1 || !id || id.length > 160 || /[\u0000-\u001f]/.test(id)) return null;
+  if (separator < 1 || !id || id.length > 160 || Array.from(id).some((character) => character.charCodeAt(0) < 32)) return null;
   const sources: Record<string, [string, string, string]> = {
     auth: ["customer_accounts", "auth_user_id", "email"],
     order: ["orders", "id", "customer_email"],
@@ -177,7 +177,7 @@ async function resolveCustomerEmail(database: D1Database, customerId: string, au
     review: ["product_reviews", "id", "customer_email"],
     notification: ["customer_notifications", "id", "owner_email"],
   };
-  const source = sources[kind];
+  const source = Object.hasOwn(sources, kind) ? sources[kind] : null;
   if (!source) return null;
   const [table, key, emailColumn] = source;
   const row = await database.prepare(`SELECT lower(trim(${emailColumn})) email FROM ${table} WHERE ${key} = ? LIMIT 1`)

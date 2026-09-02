@@ -360,210 +360,131 @@ export async function deleteOrderRecord(
   return { deleted: true as const };
 }
 
-export async function getOrderByNumberForPayment(
-  orderNumber: string,
-  customerEmail: string,
-) {
-  const database = await requireDatabase();
+export async function getOrderByNumberForPayment(orderNumber: string, customerEmail: string, databaseOverride?: D1Database) {
+  const database = databaseOverride ?? await requireDatabase();
   await releaseExpiredReservations(database);
-  const row = await database
-    .prepare(
-      `SELECT id FROM orders
-        WHERE order_number = ? AND customer_email = ?
-        LIMIT 1`,
-    )
-    .bind(orderNumber, customerEmail.toLowerCase())
-    .first<{ id: string }>();
+  const row = await database.prepare("SELECT id FROM orders WHERE order_number = ? AND customer_email = ? LIMIT 1")
+    .bind(orderNumber, customerEmail.toLowerCase()).first<{ id: string }>();
   return row ? getOrderById(row.id, database) : null;
 }
 
 export async function recordPaymentAttempt(input: {
-  orderId: string;
-  provider: string;
-  amountMinor: number;
-  authority?: string;
-  status?: "pending" | "failed";
+  orderId: string; provider: string; amountMinor: number;
+  configurationRevision: string | null; sandbox: boolean;
 }, databaseOverride?: D1Database) {
   const database = databaseOverride ?? await requireDatabase();
-  const id = crypto.randomUUID();
-  await database
-    .prepare(
-      `INSERT INTO payment_attempts
-         (id, order_id, provider, authority, status, amount_minor)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
-      id,
-      input.orderId,
-      input.provider,
-      input.authority ?? "",
-      input.status ?? "pending",
-      input.amountMinor,
-    )
-    .run();
+  if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0) throw new Error("PAYMENT_AMOUNT_INVALID");
+  const id = "v57_" + crypto.randomUUID();
+  const result = await database.prepare(
+    "INSERT INTO payment_attempts (id, order_id, provider, authority, status, amount_minor) " +
+    "SELECT ?, id, ?, '', 'pending', total_minor FROM orders WHERE id = ? AND status = 'new' AND payment_status != 'paid' AND currency = 'IRR' AND total_minor = ? " +
+    "AND (reservation_expires_at = '' OR datetime(reservation_expires_at) > CURRENT_TIMESTAMP) " +
+    "AND NOT EXISTS (SELECT 1 FROM bank_transfer_receipts WHERE order_id = orders.id AND status = 'pending') " +
+    "AND ((? IS NULL AND NOT EXISTS (SELECT 1 FROM payment_provider_configs WHERE provider = ?)) OR " +
+    "EXISTS (SELECT 1 FROM payment_provider_configs WHERE provider = ? AND enabled = 1 AND credentials_iv = ? AND sandbox = ?))",
+  ).bind(id, input.provider, input.orderId, input.amountMinor, input.configurationRevision, input.provider,
+    input.provider, input.configurationRevision, input.sandbox ? 1 : 0).run();
+  if (result.meta.changes !== 1) throw new Error("PAYMENT_ORDER_OR_CONFIG_CHANGED");
   return id;
 }
 
-export async function getReusablePendingPaymentAttempt(
-  orderId: string,
-  databaseOverride?: D1Database,
-) {
+export async function getReusablePendingPaymentAttempt(orderId: string, databaseOverride?: D1Database) {
   const database = databaseOverride ?? await requireDatabase();
-  await database
-    .prepare(
-      `UPDATE payment_attempts
-          SET status = 'failed', updated_at = CURRENT_TIMESTAMP
-        WHERE order_id = ? AND status = 'pending' AND authority = ''
-          AND created_at <= datetime('now', '-5 minutes')`,
-    )
-    .bind(orderId)
-    .run();
-  return database
-    .prepare(
-      `SELECT id, authority
-         FROM payment_attempts
-        WHERE order_id = ? AND status = 'pending'
-        ORDER BY created_at DESC
-        LIMIT 1`,
-    )
-    .bind(orderId)
-    .first<{ id: string; authority: string }>();
+  await database.prepare(
+    "UPDATE payment_attempts SET status = 'failed', updated_at = CURRENT_TIMESTAMP " +
+    "WHERE order_id = ? AND status = 'pending' AND authority = '' AND created_at <= datetime('now', '-5 minutes')",
+  ).bind(orderId).run();
+  return database.prepare(
+    "SELECT id, provider, authority, amount_minor FROM payment_attempts WHERE order_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1",
+  ).bind(orderId).first<{ id: string; provider: string; authority: string; amount_minor: number }>();
 }
 
-export async function updatePaymentAuthority(
-  attemptId: string,
-  authority: string,
-  databaseOverride?: D1Database,
-) {
+export async function updatePaymentAuthority(attemptId: string, authority: string, databaseOverride?: D1Database) {
   const database = databaseOverride ?? await requireDatabase();
-  await database.batch([
-    database
-      .prepare(
-        `UPDATE payment_attempts
-            SET authority = ?, updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?`,
-      )
-      .bind(authority, attemptId),
-    database
-      .prepare(
-        `UPDATE orders
-            SET payment_status = 'pending', updated_at = CURRENT_TIMESTAMP
-          WHERE id = (
-            SELECT order_id FROM payment_attempts WHERE id = ? LIMIT 1
-          ) AND status = 'new'`,
-      )
-      .bind(attemptId),
+  const results = await database.batch([
+    database.prepare("UPDATE payment_attempts SET authority = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending' AND authority = '' " +
+      "AND EXISTS (SELECT 1 FROM orders WHERE id = payment_attempts.order_id AND status = 'new' AND payment_status != 'paid' AND currency = 'IRR' AND total_minor = payment_attempts.amount_minor " +
+      "AND (reservation_expires_at = '' OR datetime(reservation_expires_at) > CURRENT_TIMESTAMP))").bind(authority, attemptId),
+    database.prepare("UPDATE orders SET payment_status = 'pending', updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT order_id FROM payment_attempts WHERE id = ?) AND status = 'new' AND changes() = 1").bind(attemptId),
   ]);
+  if (results[0].meta.changes !== 1) throw new Error("PAYMENT_ATTEMPT_NOT_PENDING");
 }
 
-export async function getPaymentAttemptForCallback(
-  authority: string,
-  databaseOverride?: D1Database,
-) {
+export type PaymentCallbackRecord = {
+  id: string; order_id: string; provider: string; authority: string; amount_minor: number;
+  status: "pending" | "paid" | "failed" | "refunded"; provider_reference: string;
+  order_number: string; payment_status: PaymentStatus; order_status: OrderStatus;
+  currency: string; total_minor: number; reservation_expires_at: string;
+};
+
+export async function getPaymentAttemptForCallback(authority: string, databaseOverride?: D1Database, provider = "zarinpal") {
   const database = databaseOverride ?? await requireDatabase();
-  return database
-    .prepare(
-      `SELECT pa.id, pa.order_id, pa.amount_minor, pa.status,
-              pa.provider_reference, o.order_number, o.payment_status
-         FROM payment_attempts pa
-         JOIN orders o ON o.id = pa.order_id
-        WHERE pa.authority = ?
-        ORDER BY pa.created_at DESC
-        LIMIT 1`,
-    )
-    .bind(authority)
-    .first<{
-      id: string;
-      order_id: string;
-      amount_minor: number;
-      status: "pending" | "paid" | "failed";
-      provider_reference: string;
-      order_number: string;
-      payment_status: PaymentStatus;
-    }>();
+  return database.prepare(
+    "SELECT pa.id, pa.order_id, pa.provider, pa.authority, pa.amount_minor, pa.status, pa.provider_reference, " +
+    "o.order_number, o.payment_status, o.status order_status, o.currency, o.total_minor, o.reservation_expires_at " +
+    "FROM payment_attempts pa JOIN orders o ON o.id = pa.order_id WHERE pa.authority = ? AND pa.provider = ? ORDER BY pa.created_at DESC LIMIT 1",
+  ).bind(authority, provider).first<PaymentCallbackRecord>();
 }
 
 export async function completePayment(input: {
-  authority: string;
-  providerReference: string;
+  attemptId: string; orderId: string; provider: string; authority: string;
+  amountMinor: number; currency: "IRR"; providerReference: string;
 }, databaseOverride?: D1Database) {
   const database = databaseOverride ?? await requireDatabase();
-  const attempt = await database
-    .prepare(
-      `SELECT id, order_id, status FROM payment_attempts
-        WHERE authority = ? ORDER BY created_at DESC LIMIT 1`,
-    )
-    .bind(input.authority)
-    .first<{ id: string; order_id: string; status: string }>();
+  const attempt = await getPaymentAttemptForCallback(input.authority, database, input.provider);
   if (!attempt) throw new Error("PAYMENT_ATTEMPT_NOT_FOUND");
-  if (attempt.status === "paid") return getOrderById(attempt.order_id, database);
+  if (attempt.id !== input.attemptId || attempt.order_id !== input.orderId || attempt.provider !== input.provider) throw new Error("PAYMENT_IDENTITY_MISMATCH");
+  if (input.currency !== "IRR" || attempt.currency !== input.currency || !Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0 ||
+      attempt.amount_minor !== input.amountMinor || attempt.total_minor !== input.amountMinor) throw new Error("PAYMENT_AMOUNT_MISMATCH");
+  if (!/^[a-z0-9_-]{1,120}$/i.test(input.providerReference)) throw new Error("PAYMENT_REFERENCE_INVALID");
+  if (attempt.status === "paid") {
+    if (attempt.payment_status !== "paid" || attempt.provider_reference !== input.providerReference) throw new Error("PAYMENT_REFERENCE_MISMATCH");
+    return getOrderById(attempt.order_id, database);
+  }
   if (attempt.status !== "pending") throw new Error("PAYMENT_ATTEMPT_NOT_PENDING");
-  await database.batch([
-    database
-      .prepare(
-        `UPDATE payment_attempts
-            SET status = 'paid', provider_reference = ?,
-                updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?`,
-      )
-      .bind(input.providerReference, attempt.id),
-    database
-      .prepare(
-        `UPDATE orders
-            SET payment_status = 'paid', status = 'confirmed',
-                reservation_expires_at = '', updated_at = CURRENT_TIMESTAMP
-          WHERE id = ? AND status = 'new'`,
-      )
-      .bind(attempt.order_id),
-    database
-      .prepare(
-        `INSERT OR IGNORE INTO admin_audit_log (actor_email, action, subject_id)
-         VALUES ('payment-provider', 'order.paid', ?)`,
-      )
-      .bind(attempt.order_id),
+  // A D1 batch is atomic. changes() carries the winning order CAS into the attempt
+  // and audit writes, so concurrent/duplicate callbacks cannot settle twice.
+  const results = await database.batch([
+    database.prepare(
+      "UPDATE orders SET payment_status = 'paid', status = 'confirmed', reservation_expires_at = '', updated_at = CURRENT_TIMESTAMP " +
+      "WHERE id = ? AND status = 'new' AND payment_status != 'paid' AND currency = 'IRR' AND total_minor = ? " +
+      "AND (reservation_expires_at = '' OR datetime(reservation_expires_at) > CURRENT_TIMESTAMP) " +
+      "AND EXISTS (SELECT 1 FROM payment_attempts WHERE id = ? AND order_id = orders.id AND provider = ? AND authority = ? AND amount_minor = ? AND status = 'pending') " +
+      "AND NOT EXISTS (SELECT 1 FROM payment_attempts WHERE provider = ? AND provider_reference = ? AND status = 'paid' AND id != ?)",
+    ).bind(input.orderId, input.amountMinor, input.attemptId, input.provider, input.authority, input.amountMinor,
+      input.provider, input.providerReference, input.attemptId),
+    database.prepare("UPDATE payment_attempts SET status = 'paid', provider_reference = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending' AND changes() = 1")
+      .bind(input.providerReference, input.attemptId),
+    database.prepare("INSERT OR IGNORE INTO admin_audit_log (actor_email, action, subject_id) SELECT 'payment-provider', 'order.paid', ? WHERE changes() = 1").bind(input.orderId),
   ]);
-  return getOrderById(attempt.order_id, database);
+  if (results[0].meta.changes !== 1) {
+    const raced = await getPaymentAttemptForCallback(input.authority, database, input.provider);
+    if (raced?.status !== "paid" || raced.payment_status !== "paid" || raced.provider_reference !== input.providerReference) throw new Error("PAYMENT_SETTLEMENT_CONFLICT");
+  }
+  return getOrderById(input.orderId, database);
 }
 
-export async function failPaymentAttempt(
-  authority: string,
-  databaseOverride?: D1Database,
-) {
+export async function failPaymentAttempt(authority: string, databaseOverride?: D1Database, provider = "zarinpal") {
+  const database = databaseOverride ?? await requireDatabase();
+  const attempt = await getPaymentAttemptForCallback(authority, database, provider);
+  if (attempt) await failPaymentAttemptById(attempt.id, database);
+}
+
+export async function failPaymentAttemptById(attemptId: string, databaseOverride?: D1Database) {
   const database = databaseOverride ?? await requireDatabase();
   await database.batch([
-    database
-      .prepare(
-        `UPDATE orders
-            SET payment_status = 'failed', updated_at = CURRENT_TIMESTAMP
-          WHERE id = (
-            SELECT order_id FROM payment_attempts
-             WHERE authority = ? AND status = 'pending' LIMIT 1
-          ) AND status = 'new'`,
-      )
-      .bind(authority),
-    database
-      .prepare(
-        `UPDATE payment_attempts
-            SET status = 'failed', updated_at = CURRENT_TIMESTAMP
-          WHERE authority = ? AND status = 'pending'`,
-      )
-      .bind(authority),
+    database.prepare("UPDATE orders SET payment_status = 'failed', updated_at = CURRENT_TIMESTAMP " +
+      "WHERE id = (SELECT order_id FROM payment_attempts WHERE id = ? AND status = 'pending') AND status = 'new' AND payment_status != 'paid'").bind(attemptId),
+    database.prepare("UPDATE payment_attempts SET status = 'failed', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'").bind(attemptId),
   ]);
 }
 
-export async function failPaymentAttemptById(
-  attemptId: string,
-  databaseOverride?: D1Database,
-) {
+export async function getOwnedOrderPaymentSummary(orderNumber: string, customerEmail: string, databaseOverride?: D1Database) {
   const database = databaseOverride ?? await requireDatabase();
-  await database
-    .prepare(
-      `UPDATE payment_attempts
-          SET status = 'failed', updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND status = 'pending'`,
-    )
-    .bind(attemptId)
-    .run();
+  return database.prepare("SELECT o.order_number, o.payment_status, " +
+    "COALESCE((SELECT provider_reference FROM payment_attempts WHERE order_id = o.id AND status = 'paid' ORDER BY created_at DESC LIMIT 1), '') reference " +
+    "FROM orders o WHERE o.order_number = ? AND o.customer_email = ? LIMIT 1")
+    .bind(orderNumber, customerEmail.trim().toLowerCase()).first<{ order_number: string; payment_status: PaymentStatus; reference: string }>();
 }
 
 export async function getOrderById(id: string, database?: D1Database) {

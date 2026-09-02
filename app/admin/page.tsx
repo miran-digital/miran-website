@@ -43,6 +43,8 @@ export default async function AdminRoute({ searchParams }: {
     ? "orders"
     : params.tab === "customers" && access.permissions.includes("customers.read")
       ? "customers"
+      : params.tab === "payments" && access.role === "owner" && access.permissions.includes("security.write")
+        ? "payments"
       : "overview";
   return (
     <AdminPage

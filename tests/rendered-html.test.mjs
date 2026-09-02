@@ -1294,11 +1294,11 @@ test("keeps successful payment callbacks idempotent and prevents paid downgrade"
      VALUES (?, ?, 'zarinpal', ?, 'pending', ?)`,
   ).bind("attempt-payment", "payment-order", "AUTHORITY-1", 1000).run();
   const first = await completePayment(
-    { authority: "AUTHORITY-1", providerReference: "REF-1" },
+    { attemptId: "attempt-payment", orderId: "payment-order", provider: "zarinpal", authority: "AUTHORITY-1", amountMinor: 1000, currency: "IRR", providerReference: "REF-1" },
     d1.database,
   );
   const replay = await completePayment(
-    { authority: "AUTHORITY-1", providerReference: "REF-1" },
+    { attemptId: "attempt-payment", orderId: "payment-order", provider: "zarinpal", authority: "AUTHORITY-1", amountMinor: 1000, currency: "IRR", providerReference: "REF-1" },
     d1.database,
   );
   await failPaymentAttempt("AUTHORITY-1", d1.database);
@@ -2919,6 +2919,7 @@ test("reports payment unavailable until an owner configures a merchant", async (
     enabled: false,
     provider: null,
     reason: "merchant_not_configured",
+    providers: [],
   });
 });
 
@@ -2963,10 +2964,7 @@ test("keeps encrypted Zarinpal configuration private", async () => {
 });
 
 test("uses the documented ZarinPal endpoints and maps provider failures", async () => {
-  const source = await readFile(
-    new URL("../lib/payment-provider.ts", import.meta.url),
-    "utf8",
-  );
+  const source = (await Promise.all(["../lib/payments/adapters/zarinpal.ts", "../lib/payments/provider-errors.ts"].map((path) => readFile(new URL(path, import.meta.url), "utf8")))).join("\n");
   assert.match(source, /https:\/\/payment\.zarinpal\.com\/pg\/v4/);
   assert.match(source, /https:\/\/payment\.zarinpal\.com\/pg\/StartPay/);
   assert.doesNotMatch(source, /https:\/\/api\.zarinpal\.com/);

@@ -153,6 +153,16 @@ test("V56 profiles isolate orders, addresses, support, reviews and safe payment 
   } finally { d1.close(); }
 });
 
+test("V56 customer detail rejects control characters and inherited identity names without querying data", async () => {
+  const d1 = await createD1Database();
+  try {
+    for (const id of ["auth:\u0000bad", "auth:bad\u001f", "constructor:bad", "__proto__:bad", "toString:bad", "auth:", "missing-colon"]) {
+      assert.equal(await readAdminCustomerProfile(id, {}, [], d1.database), null);
+    }
+    assert.equal(d1.queries.length, 0);
+  } finally { d1.close(); }
+});
+
 test("V56 legacy identities use existing keys and all customer order pages remain reachable", async () => {
   const d1 = await createD1Database();
   try {

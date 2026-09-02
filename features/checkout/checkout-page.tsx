@@ -1,5 +1,7 @@
 "use client";
 
+import type { PublicPaymentProvider } from "@/lib/payments/provider-catalog";
+
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Container } from "@/components/ui";
 import type { CustomerAddress } from "@/features/account/address-types";
@@ -68,7 +70,13 @@ export function CheckoutPage({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [confirmation, setConfirmation] = useState<OrderConfirmation | null>(null);
-  const [paymentEnabled, setPaymentEnabled] = useState(false);
+  const [paymentProviders, setPaymentProviders] = useState<PublicPaymentProvider[]>([]);
+  const [selectedPaymentProvider, setSelectedPaymentProvider] = useState("");
+  const [providersLoading, setProvidersLoading] = useState(true);
+  const [providersError, setProvidersError] = useState("");
+  const paymentEnabled = paymentProviders.length > 0;
+  const activePaymentProvider = paymentProviders.some((provider) => provider.id === selectedPaymentProvider)
+    ? selectedPaymentProvider : paymentProviders[0]?.id ?? "";
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentError, setPaymentError] = useState("");
   const [receiptBusy, setReceiptBusy] = useState(false);
@@ -87,10 +95,16 @@ export function CheckoutPage({
   }, []);
 
   useEffect(() => {
-    void fetch("/api/payments/capability", { cache: "no-store" })
-      .then((response) => response.json())
-      .then((payload: { enabled?: boolean }) => setPaymentEnabled(payload.enabled === true))
-      .catch(() => setPaymentEnabled(false));
+    const controller = new AbortController();
+    void fetch("/api/payments/capability", { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const payload = await response.json() as { providers?: PublicPaymentProvider[]; reason?: string };
+        if (!response.ok || !Array.isArray(payload.providers) || payload.reason === "configuration_unavailable") throw new Error("دریافت وضعیت درگاه‌ها موقتاً ممکن نیست.");
+        if (!controller.signal.aborted) setPaymentProviders(payload.providers);
+      })
+      .catch(() => { if (!controller.signal.aborted) setProvidersError("دریافت وضعیت درگاه‌ها موقتاً ممکن نیست."); })
+      .finally(() => { if (!controller.signal.aborted) setProvidersLoading(false); });
+    return () => controller.abort();
   }, []);
 
   const selectedAddress = useMemo(
@@ -230,14 +244,14 @@ export function CheckoutPage({
   }
 
   async function startPayment() {
-    if (!confirmation || paymentLoading) return;
+    if (!confirmation || paymentLoading || !activePaymentProvider || receiptBusy || receiptSubmitted) return;
     setPaymentLoading(true);
     setPaymentError("");
     try {
       const response = await fetch("/api/payments/session", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ orderNumber: confirmation.orderNumber }),
+        body: JSON.stringify({ orderNumber: confirmation.orderNumber, provider: activePaymentProvider }),
       });
       const payload = (await response.json()) as { redirectUrl?: string; error?: string };
       if (!response.ok || !payload.redirectUrl) {
@@ -247,6 +261,11 @@ export function CheckoutPage({
     } catch (error) {
       setPaymentError(error instanceof Error ? error.message : "شروع پرداخت ممکن نشد.");
       setPaymentLoading(false);
+      // Refresh availability only; never retry a payment automatically.
+      void fetch("/api/payments/capability", { cache: "no-store" })
+        .then((response) => response.json())
+        .then((payload: { providers?: PublicPaymentProvider[] }) => { if (Array.isArray(payload.providers)) setPaymentProviders(payload.providers); })
+        .catch(() => undefined);
     }
   }
 
@@ -306,17 +325,26 @@ export function CheckoutPage({
               <h2>انتخاب روش پرداخت</h2>
               {paymentEnabled ? (
                 <section className={styles.paymentBoundary}>
-                  <strong>پرداخت آنلاین با زرین‌پال</strong>
+                  <strong>پرداخت آنلاین</strong>
                   <p>سفارش تا پایان مهلت پرداخت برای شما رزرو شده است.</p>
+                  <fieldset className={styles.providerOptions} disabled={paymentLoading || receiptBusy || receiptSubmitted}>
+                    <legend>انتخاب درگاه پرداخت</legend>
+                    {paymentProviders.map((provider) => <label className={styles.providerOption} key={provider.id}>
+                      <input type="radio" name="paymentProvider" value={provider.id} checked={activePaymentProvider === provider.id} onChange={() => setSelectedPaymentProvider(provider.id)} />
+                      <span>{provider.label}{provider.sandbox ? " — آزمایشی؛ بدون پرداخت واقعی" : ""}</span>
+                    </label>)}
+                  </fieldset>
+                  <p>نام درگاه به معنای الزام استفاده از کارت همان بانک نیست.</p>
                   {paymentError ? <p className={styles.error} role="alert">{paymentError}</p> : null}
-                  <button type="button" disabled={paymentLoading} onClick={() => void startPayment()}>
+                  <button type="button" disabled={paymentLoading || receiptBusy || receiptSubmitted} onClick={() => void startPayment()}>
                     {paymentLoading ? "در حال اتصال…" : "پرداخت امن با کارت بانکی"}
                   </button>
                 </section>
               ) : (
                 <section className={styles.paymentBoundary}>
-                  <strong>زرین‌پال هنوز فعال نشده است.</strong>
-                  <p>تا ثبت امن شناسه پذیرنده توسط مالک، پرداخت آنلاین انجام نمی‌شود.</p>
+                  <strong>{providersLoading ? "در حال بررسی درگاه‌های پرداخت…" : providersError || "درگاه پرداخت آنلاین فعالی در دسترس نیست."}</strong>
+                  <p>روش کارت‌به‌کارت، در صورت فعال‌بودن، مستقل از درگاه‌های آنلاین در دسترس است.</p>
+                  {paymentError ? <p className={styles.error} role="alert">{paymentError}</p> : null}
                 </section>
               )}
               {bankTransferEnabled ? (
@@ -337,7 +365,7 @@ export function CheckoutPage({
                     <label>توضیح برای مدیریت (اختیاری)
                       <textarea name="customerNote" rows={3} maxLength={500} disabled={receiptBusy || receiptSubmitted} />
                     </label>
-                    <button type="submit" disabled={receiptBusy || receiptSubmitted}>
+                    <button type="submit" disabled={receiptBusy || receiptSubmitted || paymentLoading}>
                       {receiptBusy ? "در حال ارسال…" : receiptSubmitted ? "فیش ارسال شد" : "ارسال فیش برای بررسی"}
                     </button>
                   </form>
@@ -457,7 +485,7 @@ export function CheckoutPage({
                 <div className={styles.sectionHeading}><h2>مرور نهایی</h2><p>نشانی سفارش به‌صورت مستقل ذخیره می‌شود و تغییرات بعدی دفترچه نشانی آن را عوض نمی‌کند.</p></div>
                 <section><h3>تحویل به</h3><p>{selectedAddress.recipientName} · {selectedAddress.label}</p><p>{selectedAddress.addressLine}</p><p>{selectedAddress.province}، {selectedAddress.city}{selectedAddress.postcode ? `، ${selectedAddress.postcode}` : ""}</p><button type="button" onClick={() => setStep("address")}>تغییر نشانی</button></section>
                 <section><h3>روش تحویل</h3><p>{delivery === "priority" ? "ارسال سریع" : "ارسال استاندارد"}</p><button type="button" onClick={() => setStep("delivery")}>ویرایش روش تحویل</button></section>
-                <div className={styles.paymentBoundary} role="note"><strong>{paymentEnabled || bankTransferEnabled ? "انتخاب روش پرداخت پس از ثبت سفارش" : "ثبت سفارش بدون دریافت وجه"}</strong><p>{paymentEnabled && bankTransferEnabled ? "پس از ثبت می‌توانید زرین‌پال یا کارت‌به‌کارت و ارسال فیش را انتخاب کنید." : paymentEnabled ? "پس از ثبت، پرداخت امن زرین‌پال در دسترس است." : bankTransferEnabled ? "پس از ثبت، مشخصات کارت و فرم امن ارسال فیش نمایش داده می‌شود." : "هیچ روش پرداختی فعال نیست و اکنون فقط شماره پیگیری می‌گیرید."}</p></div>
+                <div className={styles.paymentBoundary} role="note"><strong>{paymentEnabled || bankTransferEnabled ? "انتخاب روش پرداخت پس از ثبت سفارش" : "ثبت سفارش بدون دریافت وجه"}</strong><p>{paymentEnabled && bankTransferEnabled ? "پس از ثبت می‌توانید درگاه آنلاین یا کارت‌به‌کارت و ارسال فیش را انتخاب کنید." : paymentEnabled ? "پس از ثبت، انتخاب درگاه پرداخت آنلاین در دسترس است." : bankTransferEnabled ? "پس از ثبت، مشخصات کارت و فرم امن ارسال فیش نمایش داده می‌شود." : providersLoading ? "وضعیت درگاه‌ها در حال بررسی است؛ اکنون وجهی دریافت نمی‌شود." : "هیچ روش پرداختی اکنون در دسترس نیست و فقط شماره پیگیری می‌گیرید."}</p></div>
                 {submitError ? <p className={styles.error} role="alert">{submitError}</p> : null}
                 <button type="button" disabled={submitting || hasInvalidCurrency} onClick={() => void submitOrder()}>{submitting ? "در حال ثبت…" : "ثبت درخواست سفارش"}</button>
               </div>

@@ -101,7 +101,7 @@ import {
   PRODUCT_IMAGE_ACCEPT,
 } from "./product-image-optimizer";
 
-type AdminTab = "overview" | "content" | "categories" | "banners" | "products" | "orders" | "customers" | "reports" | "sellers";
+type AdminTab = "overview" | "content" | "categories" | "banners" | "products" | "orders" | "customers" | "reports" | "sellers" | "payments";
 type SaveStatus = "idle" | "loading" | "saved" | "saving" | "error";
 type StagedProductImage = { key: string; file: File; previewUrl: string };
 type StagedProductVideo = { file: File; previewUrl: string };
@@ -310,6 +310,10 @@ export function AdminPage({
     statusMessageRef.current = nextMessage;
     setStatusMessageState(nextMessage);
   }, []);
+  const showPaymentMessage = useCallback((status: "loading" | "saving" | "saved" | "error", message: string) => {
+    setStatusMessage(message);
+    setSaveStatus(status);
+  }, [setSaveStatus, setStatusMessage]);
   const [activeProductValidation, setActiveProductValidation] = useState<{
     fieldName: string;
     message: string;
@@ -2009,6 +2013,7 @@ export function AdminPage({
                 ["banners", "بنرها"],
                 ["products", "محصولات"],
                 ["orders", "سفارش‌ها"],
+                ["payments", "درگاه‌های پرداخت"],
                 ["customers", "مشتریان"],
                 ["reports", "گزارش‌ها"],
                 ["sellers", "فروشندگان"],
@@ -2020,6 +2025,7 @@ export function AdminPage({
               (value === "banners" && can("content.write")) ||
               (value === "products" && can("catalog.write")) ||
               (value === "orders" && can("orders.write")) ||
+              (value === "payments" && role === "owner" && can("security.write")) ||
               (value === "customers" && (can("customers.read") || can("support.write") || can("reviews.write"))) ||
               (value === "reports" && can("reports.read")) ||
               (value === "sellers" && can("sellers.write")),
@@ -2036,6 +2042,7 @@ export function AdminPage({
           </nav>
 
           <div className={styles.workspace}>
+            {tab === "payments" && role === "owner" && can("security.write") ? <PaymentGatewaySettings onStatus={showPaymentMessage} calendarMode={calendarMode} /> : null}
             {tab === "overview" ? (
               <section aria-labelledby="admin-overview-title">
                 <SectionLabel id="admin-overview-title">
@@ -2132,7 +2139,6 @@ export function AdminPage({
                       </fieldset>
                       <button type="submit">ذخیره تنظیمات فروشگاه</button>
                     </form>
-                    <PaymentGatewaySettings />
                   </article>
                 ) : null}
                 {role === "owner" ? (

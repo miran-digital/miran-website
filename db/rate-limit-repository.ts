@@ -4,6 +4,7 @@ export type RateLimitScope =
   | "address.mutate"
   | "admin.login"
   | "admin.upload"
+  | "admin.payment-config"
   | "auth.login"
   | "auth.signup"
   | "auth.verification"

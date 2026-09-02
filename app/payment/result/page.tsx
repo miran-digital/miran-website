@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Container } from "@/components/ui";
+import { getCustomerUser } from "@/lib/customer-auth";
+import { getOwnedOrderPaymentSummary } from "@/db/order-repository";
 import styles from "@/features/checkout/checkout.module.css";
 
 export const dynamic = "force-dynamic";
@@ -14,18 +16,25 @@ export default async function PaymentResultPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  const paid = params.status === "paid";
-  const order = typeof params.order === "string" ? params.order : "";
-  const reference = typeof params.ref === "string" ? params.ref : "";
+  const user = await getCustomerUser();
+  const requestedOrder = typeof params.order === "string" && params.order.length <= 80 ? params.order : "";
+  const summary = user && requestedOrder
+    ? await getOwnedOrderPaymentSummary(requestedOrder, user.email).catch(() => null)
+    : null;
+  // Browser query parameters never establish payment success or expose another customer's order.
+  const paid = summary?.payment_status === "paid";
+  const order = summary?.order_number ?? "";
+  const reference = paid ? summary?.reference ?? "" : "";
   return (
     <main className={styles.page} dir="rtl">
       <Container size="wide">
         <div className={`${styles.state} ${paid ? styles.success : ""}`} role="status">
           <span aria-hidden="true">{paid ? "✓" : "!"}</span>
-          <h1>{paid ? "پرداخت با موفقیت تأیید شد" : "پرداخت تأیید نشد"}</h1>
+          <h1>{paid ? "پرداخت با موفقیت تأیید شد" : "پیگیری وضعیت پرداخت"}</h1>
           {order ? <p>شماره سفارش: <strong dir="ltr">{order}</strong></p> : null}
           {reference ? <p>شماره مرجع: <strong dir="ltr">{reference}</strong></p> : null}
-          <p>{paid ? "سفارش شما وارد مرحلهٔ بررسی و آماده‌سازی شد." : "هیچ پرداخت موفقی برای این تلاش ثبت نشد. در صورت کسر وجه، وضعیت را با شماره سفارش پیگیری کنید."}</p>
+          <p>{paid ? "پرداخت این سفارش در حساب شما تأیید شده است." : !user ? "برای مشاهده نتیجهٔ تأییدشده، وارد حساب خریدار شوید." : !summary ? "وضعیت سفارش اکنون برای این حساب در دسترس نیست." : "تأیید نهایی پرداخت هنوز ثبت نشده است. در صورت کسر وجه، دوباره پرداخت نکنید و با شماره سفارش پیگیری کنید."}</p>
+          <a href="/account">پیگیری در حساب کاربری</a>
           <a href="/">بازگشت به فروشگاه</a>
         </div>
       </Container>
