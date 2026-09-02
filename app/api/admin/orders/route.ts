@@ -1,6 +1,7 @@
 import {
   deleteOrderRecord,
   getOrderReceiptStorageKeys,
+  getOrderById,
   listOrders,
   updateOrderStatus,
 } from "@/db/order-repository";
@@ -19,15 +20,23 @@ const statuses = new Set<OrderStatus>([
   "cancelled",
 ]);
 
-export async function GET() {
+export async function GET(request: Request) {
   const access = await getAdminAccess("orders.write");
   if (!access.allowed) return denied(access.reason);
   try {
+    const id = new URL(request.url).searchParams.get("id");
+    if (id !== null) {
+      if (!id || id.length > 120) return Response.json({ error: "شناسه سفارش معتبر نیست." }, { status: 422 });
+      return Response.json({ order: await getOrderById(id) }, { headers: { "cache-control": "private, no-store" } });
+    }
     return Response.json(
       { orders: await listOrders() },
       { headers: { "cache-control": "no-store" } },
     );
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message === "ORDER_NOT_FOUND") {
+      return Response.json({ error: "سفارش پیدا نشد." }, { status: 404, headers: { "cache-control": "private, no-store" } });
+    }
     return Response.json({ error: "خواندن سفارش‌ها ممکن نشد." }, { status: 503 });
   }
 }

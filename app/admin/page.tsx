@@ -14,7 +14,9 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false, noarchive: true },
 };
 
-export default async function AdminRoute() {
+export default async function AdminRoute({ searchParams }: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const access = await getAdminAccess();
   if (!access.allowed && access.reason === "anonymous") {
     redirect("/admin/login?next=%2Fadmin");
@@ -36,12 +38,21 @@ export default async function AdminRoute() {
     );
   }
   const categories = getAdminCatalogCategories();
+  const params = await searchParams ?? {};
+  const initialTab = params.tab === "orders" && access.permissions.includes("orders.write")
+    ? "orders"
+    : params.tab === "customers" && access.permissions.includes("customers.read")
+      ? "customers"
+      : "overview";
   return (
     <AdminPage
       categories={categories}
       signOutHref={access.authMethod === "owner_password" ? "/admin/logout" : chatGPTSignOutPath("/")}
       role={access.role}
       permissions={access.permissions}
+      initialTab={initialTab}
+      initialOrderId={initialTab === "orders" && typeof params.order === "string" ? params.order.slice(0, 120) : ""}
+      initialCustomerId={initialTab === "customers" && typeof params.customer === "string" ? params.customer.slice(0, 180) : ""}
     />
   );
 }

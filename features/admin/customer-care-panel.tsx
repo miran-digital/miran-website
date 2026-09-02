@@ -152,9 +152,8 @@ export function CustomerCarePanel({
   }
 
   return (
-    <section className={styles.panel} aria-labelledby="customer-care-title">
+    <section className={styles.panel} aria-label="پشتیبانی و دیدگاه مشتریان">
       <header className={styles.heading}>
-        <div><p>Customer Care</p><h1 id="customer-care-title">پشتیبانی و دیدگاه مشتریان</h1></div>
         <div className={styles.stats}><span>{tickets.filter((item) => item.status === "open").length.toLocaleString("fa-IR")} تیکت جدید</span><span>{pendingReviews.toLocaleString("fa-IR")} دیدگاه در انتظار</span></div>
       </header>
       <nav className={styles.tabs} aria-label="بخش ارتباط با مشتری">

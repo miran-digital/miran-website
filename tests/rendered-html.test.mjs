@@ -1988,19 +1988,19 @@ test("serves the customer directory from D1 when Supabase admin sync is unavaila
 test("keeps customer GET read-only, permission-protected, observable, and free of fake zero fallbacks", async () => {
   const [routeSource, repositorySource, panelSource] = await Promise.all([
     readFile(new URL("../app/api/admin/customers/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../db/customer-account-repository.ts", import.meta.url), "utf8"),
+    readFile(new URL("../db/admin-customer-directory-repository.ts", import.meta.url), "utf8"),
     readFile(new URL("../features/admin/customer-directory-panel.tsx", import.meta.url), "utf8"),
   ]);
   const getSource = routeSource.slice(routeSource.indexOf("export async function GET"), routeSource.indexOf("export async function DELETE"));
   assert.match(getSource, /getAdminAccess\("customers\.read"\)/);
-  assert.match(getSource, /listStoreCustomers: \(\) => listAdminCustomers\(\)/);
+  assert.match(getSource, /queryCustomers: \(authUsers\) => queryAdminCustomerDirectory\(options, authUsers\)/);
   assert.match(getSource, /listAuthUsers: \(\) => listSupabaseAdminUsers\(\)/);
   assert.match(getSource, /خواندن فهرست مشتریان ممکن نشد\.[\s\S]*503/);
   assert.match(getSource, /admin_customer_directory_read_failed[\s\S]*\{ stage, code \}/);
   assert.doesNotMatch(getSource, /upsertCustomerAccount|\.catch\(\(\) => \[\]\)|Promise\.all/);
   assert.doesNotMatch(getSource, /email|customer_email|owner_email/);
   assert.match(repositorySource, /FROM customer_accounts[\s\S]*FROM orders[\s\S]*FROM customer_addresses[\s\S]*FROM support_tickets[\s\S]*FROM product_reviews[\s\S]*FROM customer_notifications/);
-  assert.doesNotMatch(repositorySource.slice(repositorySource.indexOf("export async function listAdminCustomers"), repositorySource.indexOf("export async function getCustomerDeletionBlockers")), /Promise\.all|\.catch\(\(\) => \[\]\)/);
+  assert.doesNotMatch(repositorySource, /INSERT INTO|DELETE FROM|UPDATE (?:orders|customer_accounts)|releaseExpiredReservations|\.catch\(\(\) => \[\]\)/);
   assert.match(panelSource, /!loading && !loadFailed && customers\.length === 0/);
   assert.match(panelSource, /role=\{loadFailed \? "alert" : "status"\}/);
 

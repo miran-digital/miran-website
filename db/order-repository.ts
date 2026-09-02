@@ -566,7 +566,7 @@ export async function failPaymentAttemptById(
     .run();
 }
 
-async function getOrderById(id: string, database?: D1Database) {
+export async function getOrderById(id: string, database?: D1Database) {
   const db = database ?? (await requireDatabase());
   const row = await db
     .prepare(

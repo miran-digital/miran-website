@@ -90,6 +90,7 @@ import {
 import styles from "./admin.module.css";
 import { CustomerCarePanel } from "./customer-care-panel";
 import { CustomerDirectoryPanel } from "./customer-directory-panel";
+import { CustomerDetailPanel } from "./customer-detail-panel";
 import { OwnerCredentialSettings } from "./owner-credential-settings";
 import { AdminReportsPanel } from "./admin-reports-panel";
 import { PaymentGatewaySettings } from "./payment-gateway-settings";
@@ -282,13 +283,20 @@ export function AdminPage({
   signOutHref,
   role,
   permissions,
+  initialTab = "overview",
+  initialOrderId = "",
+  initialCustomerId = "",
 }: {
   categories: readonly CatalogCategory[];
   signOutHref: string;
   role: AdminRole;
   permissions: readonly AdminPermission[];
+  initialTab?: AdminTab;
+  initialOrderId?: string;
+  initialCustomerId?: string;
 }) {
-  const [tab, setTab] = useState<AdminTab>("overview");
+  const [tab, setTab] = useState<AdminTab>(initialTab);
+  const [selectedCustomerId, setSelectedCustomerId] = useState(initialCustomerId);
   const [state, setState] = useState<AdminState>(createDefaultAdminState);
   const [saveStatus, setSaveStatusState] = useState<SaveStatus>("loading");
   const [statusMessage, setStatusMessageState] = useState("");
@@ -310,7 +318,7 @@ export function AdminPage({
   const [selectedSellerId, setSelectedSellerId] = useState("");
   const [orders, setOrders] = useState<StoreOrder[]>([]);
   const [bankTransferReceipts, setBankTransferReceipts] = useState<BankTransferReceipt[]>([]);
-  const [selectedOrderId, setSelectedOrderId] = useState("");
+  const [selectedOrderId, setSelectedOrderId] = useState(initialOrderId);
   const [receiptReviewNote, setReceiptReviewNote] = useState("");
   const [receiptBusy, setReceiptBusy] = useState(false);
   const [orderBusy, setOrderBusy] = useState(false);
@@ -372,7 +380,7 @@ export function AdminPage({
     Promise.all([
       loadAdminState(),
       permissions.includes("sellers.write") ? getSellerApplications() : Promise.resolve([]),
-      permissions.includes("orders.write") ? getAdminOrders() : Promise.resolve([]),
+      permissions.includes("orders.write") ? getAdminOrders(initialOrderId) : Promise.resolve([]),
       permissions.includes("orders.write") ? getAdminBankTransferReceipts() : Promise.resolve([]),
     ])
       .then(([nextState, applications, loadedOrders, loadedReceipts]) => {
@@ -394,7 +402,7 @@ export function AdminPage({
     return () => {
       active = false;
     };
-  }, [permissions, setSaveStatus, setStatusMessage]);
+  }, [initialOrderId, permissions, setSaveStatus, setStatusMessage]);
 
   useEffect(() => {
     if (saveStatus !== "saved") return;
@@ -443,7 +451,7 @@ export function AdminPage({
     [selectedSellerId, sellers],
   );
   const selectedOrder = useMemo(
-    () => orders.find((order) => order.id === selectedOrderId) ?? orders[0],
+    () => selectedOrderId ? orders.find((order) => order.id === selectedOrderId) : orders[0],
     [orders, selectedOrderId],
   );
   const selectedOrderReceipt = useMemo(
@@ -2020,7 +2028,7 @@ export function AdminPage({
                 key={value}
                 type="button"
                 data-active={tab === value}
-                onClick={() => setTab(value)}
+                onClick={() => { setSelectedCustomerId(""); setTab(value); }}
               >
                 {label}
               </button>
@@ -2030,9 +2038,9 @@ export function AdminPage({
           <div className={styles.workspace}>
             {tab === "overview" ? (
               <section aria-labelledby="admin-overview-title">
-                <Heading kicker="Dashboard" id="admin-overview-title">
+                <SectionLabel id="admin-overview-title">
                   نمای کلی مدیریت
-                </Heading>
+                </SectionLabel>
                 <div className={styles.stats}>
                   <Stat label="بخش‌های فعال خانه" value={Object.values(state.sections).filter(Boolean).length} />
                   <Stat label="پیام‌های بالای سایت" value={state.headerMessages.length} />
@@ -2213,13 +2221,13 @@ export function AdminPage({
 
             {tab === "content" || tab === "categories" || tab === "banners" ? (
               <section className={`${styles.stack} ${styles.contentPanel}`} data-mode={tab} aria-labelledby="content-title">
-                <Heading kicker="Storefront CMS" id="content-title">
+                <SectionLabel id="content-title">
                   {tab === "categories"
                     ? "مدیریت دسته‌ها و برندها"
                     : tab === "banners"
                       ? "مدیریت بنرها"
                       : "محتوا و نمایش فروشگاه"}
-                </Heading>
+                </SectionLabel>
                 <article className={`${styles.card} ${styles.contentOnly}`}>
                   <h2>نام و لوگوی فروشگاه</h2>
                   <p>لوگو در سربرگ و پایین فروشگاه نمایش داده می‌شود؛ اگر لوگو حذف شود، نام فروشگاه جای آن را می‌گیرد.</p>
@@ -2507,7 +2515,7 @@ export function AdminPage({
 
             {tab === "products" ? (
               <section className={styles.productSection} aria-labelledby="products-title">
-                <Heading kicker="Catalog" id="products-title">مدیریت محصولات</Heading>
+                <SectionLabel id="products-title">مدیریت محصولات</SectionLabel>
                 <div className={styles.productWorkspace}>
                   <form
                     id="product-editor"
@@ -3000,7 +3008,7 @@ export function AdminPage({
 
             {tab === "orders" ? (
               <section aria-labelledby="orders-title">
-                <Heading kicker="Orders" id="orders-title">مدیریت سفارش‌ها</Heading>
+                <SectionLabel id="orders-title">مدیریت سفارش‌ها</SectionLabel>
                 <div className={styles.sellerWorkspace}>
                   <div className={styles.sellerList}>
                     {orders.length === 0 ? <p>هنوز سفارشی ثبت نشده است.</p> : null}
@@ -3087,8 +3095,10 @@ export function AdminPage({
 
             {tab === "customers" ? (
               <>
-                {can("customers.read") ? <CustomerDirectoryPanel calendarMode={calendarMode} canDelete={can("customers.delete")} /> : null}
-                {can("support.write") || can("reviews.write") ? (
+                {can("customers.read") ? selectedCustomerId
+                  ? <CustomerDetailPanel key={selectedCustomerId} customerId={selectedCustomerId} calendarMode={calendarMode} canViewOrders={can("orders.write")} />
+                  : <CustomerDirectoryPanel calendarMode={calendarMode} /> : null}
+                {!selectedCustomerId && (can("support.write") || can("reviews.write")) ? (
                   <CustomerCarePanel
                     calendarMode={calendarMode}
                     canSupport={can("support.write")}
@@ -3106,7 +3116,7 @@ export function AdminPage({
 
             {tab === "sellers" ? (
               <section aria-labelledby="sellers-title">
-                <Heading kicker="Marketplace" id="sellers-title">پرونده و احراز هویت فروشندگان</Heading>
+                <SectionLabel id="sellers-title">پرونده و احراز هویت فروشندگان</SectionLabel>
                 <div className={styles.sellerProcessStats}>
                   <Stat label="درخواست‌های جدید" value={sellers.filter((seller) => seller.status === "new").length} />
                   <Stat label="مدارک تأییدشده" value={sellers.filter((seller) => seller.documentStatus === "verified").length} />
@@ -3237,8 +3247,8 @@ export function AdminPage({
   );
 }
 
-function Heading({ kicker, id, children }: { kicker: string; id: string; children: string }) {
-  return <div className={styles.heading}><p>{kicker}</p><h1 id={id}>{children}</h1></div>;
+function SectionLabel({ id, children }: { id: string; children: string }) {
+  return <h1 className={styles.visuallyHidden} id={id}>{children}</h1>;
 }
 
 function Stat({ label, value }: { label: string; value: number }) {

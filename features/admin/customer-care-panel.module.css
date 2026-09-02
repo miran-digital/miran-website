@@ -1,7 +1,6 @@
 .panel { display: grid; gap: var(--miran-space-5); }
 .heading, .stats, .tabs, .detail > header, .actions { display: flex; align-items: center; justify-content: space-between; gap: var(--miran-space-3); }
-.heading p, .heading h1, .detail h2, .detail h3, .detail p, .messages p { margin: 0; }
-.heading p { color: var(--miran-color-brand); font-size: var(--miran-font-size-xs); font-weight: 900; }
+.detail h2, .detail h3, .detail p, .messages p { margin: 0; }
 .stats { flex-wrap: wrap; justify-content: flex-end; }
 .stats span, .detail > header > span { border-radius: 999px; padding: .4rem .75rem; background: var(--miran-color-surface-muted); font-weight: 800; }
 .tabs { justify-content: flex-start; border-block-end: 1px solid var(--miran-color-border); }

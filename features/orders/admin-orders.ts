@@ -5,7 +5,7 @@ import type {
   StoreOrder,
 } from "./order-types";
 
-export async function getAdminOrders() {
+export async function getAdminOrders(selectedOrderId = "") {
   const response = await fetch("/api/admin/orders", { cache: "no-store" });
   const payload = (await response.json()) as {
     orders?: StoreOrder[];
@@ -13,6 +13,14 @@ export async function getAdminOrders() {
   };
   if (!response.ok || !payload.orders) {
     throw new Error(payload.error || "خواندن سفارش‌ها ممکن نشد.");
+  }
+  if (selectedOrderId && !payload.orders.some((order) => order.id === selectedOrderId)) {
+    const selectedResponse = await fetch(`/api/admin/orders?id=${encodeURIComponent(selectedOrderId)}`, { cache: "no-store" });
+    const selected = await selectedResponse.json() as { order?: StoreOrder; error?: string };
+    if (!selectedResponse.ok || selected.order?.id !== selectedOrderId) {
+      throw new Error(selected.error || "سفارش انتخاب‌شده پیدا نشد.");
+    }
+    return [selected.order, ...payload.orders];
   }
   return payload.orders;
 }

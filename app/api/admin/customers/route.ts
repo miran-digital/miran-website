@@ -1,12 +1,13 @@
 import {
   deleteCustomerStoreData,
   getCustomerDeletionBlockers,
-  listAdminCustomers,
   listCustomerReceiptStorageKeys,
 } from "@/db/customer-account-repository";
+import { queryAdminCustomerDirectory } from "@/db/admin-customer-directory-repository";
 import { getAdminAccess } from "@/lib/admin-auth";
 import {
-  loadAdminCustomerDirectory,
+  loadAdminCustomerDirectoryPage,
+  parseCustomerDirectoryOptions,
 } from "@/lib/admin-customer-directory";
 import { getRuntimeEnv } from "@/lib/runtime-env";
 import { rejectCrossSiteMutation } from "@/lib/request-security";
@@ -17,11 +18,12 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   const access = await getAdminAccess("customers.read");
   if (!access.allowed) return denied(access.reason);
-  const result = await loadAdminCustomerDirectory({
-    listStoreCustomers: () => listAdminCustomers(),
+  const options = parseCustomerDirectoryOptions(new URL(request.url).searchParams);
+  const result = await loadAdminCustomerDirectoryPage({
+    queryCustomers: (authUsers) => queryAdminCustomerDirectory(options, authUsers),
     listAuthUsers: () => listSupabaseAdminUsers(),
     logFailure: logCustomerDirectoryFailure,
   });

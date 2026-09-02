@@ -1,7 +1,6 @@
 .panel { display: grid; gap: var(--miran-space-5); }
 .heading { display: flex; justify-content: space-between; gap: var(--miran-space-4); align-items: center; }
-.heading p, .heading h1, .card h2, .card p { margin: 0; }
-.heading p { color: var(--miran-color-brand); font-size: var(--miran-font-size-xs); font-weight: 900; }
+.card h2, .card p { margin: 0; }
 .heading > div:last-child { display: grid; gap: var(--miran-space-2); justify-items: end; color: var(--miran-color-text-muted); }
 .heading a { border-radius: var(--miran-radius-md); padding: .7rem 1rem; background: var(--miran-color-brand); color: var(--miran-color-brand-contrast); font-weight: 900; }
 .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--miran-space-3); }

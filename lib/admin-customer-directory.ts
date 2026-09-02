@@ -1,8 +1,43 @@
 import type { AdminCustomerSummary } from "../db/customer-account-repository.ts";
 import type { SupabaseAdminUser } from "./supabase-admin.ts";
+import type { CustomerDirectoryOptions, CustomerDirectoryPage, CustomerSort } from "../features/admin/customer-directory-types.ts";
 
 export const CUSTOMER_DIRECTORY_FALLBACK_WARNING =
   "همگام‌سازی حساب‌های ورود در دسترس نیست؛ اطلاعات ثبت‌شده فروشگاه نمایش داده می‌شود.";
+
+export function parseCustomerDirectoryOptions(params: URLSearchParams): CustomerDirectoryOptions {
+  const sort = params.get("sort") ?? "newest";
+  const sorts: CustomerSort[] = ["newest", "oldest", "name", "orders", "activity"];
+  const page = Number(params.get("page") ?? 1);
+  return {
+    query: (params.get("q") ?? "").trim().slice(0, 120),
+    sort: sorts.includes(sort as CustomerSort) ? sort as CustomerSort : "newest",
+    page: Number.isSafeInteger(page) && page > 0 ? page : 1,
+    pageSize: params.get("pageSize") === "50" ? 50 : 25,
+  };
+}
+
+export async function loadAdminCustomerDirectoryPage(dependencies: {
+  queryCustomers: (authUsers: SupabaseAdminUser[]) => Promise<CustomerDirectoryPage>;
+  listAuthUsers: () => Promise<SupabaseAdminUser[] | null>;
+  logFailure: CustomerDirectoryDependencies["logFailure"];
+}) {
+  let authUsers: SupabaseAdminUser[] | null = null;
+  try {
+    authUsers = await dependencies.listAuthUsers();
+  } catch (error) {
+    dependencies.logFailure("supabase", safeCustomerDirectoryErrorCode(error));
+  }
+  try {
+    const page = await dependencies.queryCustomers(authUsers ?? []);
+    return { ok: true as const, payload: { ...page, supabaseAdminReady: authUsers !== null,
+      ...(authUsers === null ? { warning: CUSTOMER_DIRECTORY_FALLBACK_WARNING } : {}),
+    } };
+  } catch (error) {
+    dependencies.logFailure("d1", safeCustomerDirectoryErrorCode(error));
+    return { ok: false as const };
+  }
+}
 
 export type CustomerDirectoryDependencies = {
   listStoreCustomers: () => Promise<AdminCustomerSummary[]>;

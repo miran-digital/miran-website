@@ -32,9 +32,8 @@ export function AdminReportsPanel({ calendarMode }: { calendarMode: CalendarMode
   ] as const;
 
   return (
-    <section className={styles.panel} aria-labelledby="reports-title">
+    <section className={styles.panel} aria-label="گزارش فروش و سلامت عملیات">
       <header className={styles.heading}>
-        <div><p>Reporting & Operations</p><h1 id="reports-title">گزارش فروش و سلامت عملیات</h1></div>
         <div><small>به‌روزرسانی {formatCalendarDateTime(report.generatedAt, calendarMode)}</small><a href="/api/admin/reports?format=csv">دریافت CSV</a></div>
       </header>
       <div className={styles.stats}>
