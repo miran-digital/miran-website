@@ -84,6 +84,12 @@ import {
 } from "@/lib/jalali";
 import { calculateProductDiscount } from "@/lib/product-discount";
 import {
+  categorySiblingNameKey,
+  DUPLICATE_SIBLING_CATEGORY_MESSAGE,
+  findSiblingCategoryNameConflict,
+  inspectCategoryReferences,
+} from "@/lib/category-integrity";
+import {
   isValidIranianCardNumber,
   normalizeCardNumber,
 } from "@/lib/bank-transfer";
@@ -348,6 +354,7 @@ export function AdminPage({
   const [brandingBusy, setBrandingBusy] = useState(false);
   const [bannerBusy, setBannerBusy] = useState(false);
   const [categoryBusy, setCategoryBusy] = useState(false);
+  const [categoryNameInvalid, setCategoryNameInvalid] = useState(false);
   const [productCategoryFilter, setProductCategoryFilter] = useState("");
   const [sellerBusy, setSellerBusy] = useState(false);
   const [lastSavedProductSlug, setLastSavedProductSlug] = useState("");
@@ -607,11 +614,14 @@ export function AdminPage({
       }, new Map<string, AdminProduct[]>())).sort(([left], [right]) => left.localeCompare(right, "fa")),
     }));
 
-  async function commit(next: AdminState) {
+  async function commit(
+    next: AdminState,
+    options: { deleteCategoryId?: string } = {},
+  ) {
     setSaveStatus("saving");
     setStatusMessage("");
     try {
-      const saved = await saveAdminState(next);
+      const saved = await saveAdminState(next, options);
       setState(saved);
       setSaveStatus("saved");
       return true;
@@ -666,6 +676,7 @@ export function AdminPage({
   function beginCategoryEdit(categoryId: string) {
     setNewCategoryParentSlug("");
     setEditingCategoryId(categoryId);
+    setCategoryNameInvalid(false);
     requestAnimationFrame(() => {
       document.getElementById("category-editor")?.scrollIntoView({
         behavior: "smooth",
@@ -677,6 +688,7 @@ export function AdminPage({
   function beginNewSubcategory(parentSlug: string) {
     setEditingCategoryId("");
     setNewCategoryParentSlug(parentSlug);
+    setCategoryNameInvalid(false);
     requestAnimationFrame(() => {
       document.getElementById("category-editor")?.scrollIntoView({
         behavior: "smooth",
@@ -688,6 +700,7 @@ export function AdminPage({
   function cancelCategoryEdit() {
     setEditingCategoryId("");
     setNewCategoryParentSlug("");
+    setCategoryNameInvalid(false);
   }
 
   function beginBrandEdit(brandId: string) {
@@ -797,20 +810,27 @@ export function AdminPage({
 
   function deleteCustomCategorySafely(category: AdminCategory) {
     if (!can("catalog.delete") || category.system) return;
-    const hasProducts = state.products.some((product) => product.category === category.slug);
-    const hasChildren = allManagedCategories.some((child) => child.parentSlug === category.slug);
-    if (hasProducts || hasChildren) {
+    const references = inspectCategoryReferences({
+      products: state.products,
+      categories: allManagedCategories,
+      brands: state.brands,
+      banners: state.banners,
+    }, category.slug);
+    if (references.hasBusinessReferences) {
       setSaveStatus("error");
-      setStatusMessage("برای حذف این دسته ابتدا محصولات و زیردسته‌های وابسته را جابه‌جا یا حذف کنید.");
+      setStatusMessage("برای حذف این دسته ابتدا محصولات، زیردسته‌ها، برندها و بنرهای وابسته را جابه‌جا یا حذف کنید.");
       return;
     }
     if (!window.confirm(`دسته‌بندی «${category.name}» برای همیشه حذف شود؟`)) return;
-    void commit({
-      ...state,
-      customCategories: state.customCategories.filter((item) => item.id !== category.id),
-      categoryOrder: state.categoryOrder.filter((slug) => slug !== category.slug),
-      hiddenCategoryIds: state.hiddenCategoryIds.filter((slug) => slug !== category.slug),
-    });
+    void commit(
+      {
+        ...state,
+        customCategories: state.customCategories.filter((item) => item.id !== category.id),
+        categoryOrder: state.categoryOrder.filter((slug) => slug !== category.slug),
+        hiddenCategoryIds: state.hiddenCategoryIds.filter((slug) => slug !== category.slug),
+      },
+      { deleteCategoryId: category.id },
+    );
   }
 
   function toggleCustomCategorySafely(category: AdminCategory) {
@@ -936,6 +956,17 @@ export function AdminPage({
     const duplicateCustom = state.customCategories.some(
       (category) => category.slug === slug && category.id !== editingCategory?.id,
     );
+    const candidateIdentity = {
+      id: editingCategory?.id ?? "pending-category",
+      name,
+      parentSlug,
+    };
+    const siblingNameConflict = findSiblingCategoryNameConflict(
+      allManagedCategories,
+      candidateIdentity,
+    );
+    const categoryIdentityChanged = !editingCategory ||
+      categorySiblingNameKey(editingCategory) !== categorySiblingNameKey(candidateIdentity);
     const parentExists =
       !parentSlug || availableCategories.some((category) => category.slug === parentSlug);
     const selectedParent = allManagedCategories.find(
@@ -955,7 +986,12 @@ export function AdminPage({
         state.customCategories.find((category) => category.slug === parentCursor)
           ?.parentSlug ?? "";
     }
+    if (siblingNameConflict && categoryIdentityChanged) {
+      showCategoryNameConflict(form);
+      return;
+    }
     if (!name || !slug || duplicateSystem || duplicateCustom) {
+      setCategoryNameInvalid(false);
       setSaveStatus("error");
       setStatusMessage(
         duplicateSystem || duplicateCustom
@@ -1015,10 +1051,14 @@ export function AdminPage({
             ],
       });
       if (saved) {
+        setCategoryNameInvalid(false);
         form.reset();
         cancelCategoryEdit();
       } else {
         await cleanupUploadedMedia(pendingUploads);
+        if (statusMessageRef.current === DUPLICATE_SIBLING_CATEGORY_MESSAGE) {
+          showCategoryNameConflict(form);
+        }
       }
     } catch (error) {
       const cleanupComplete = await cleanupUploadedMedia(pendingUploads);
@@ -1031,6 +1071,19 @@ export function AdminPage({
     } finally {
       setCategoryBusy(false);
     }
+  }
+
+  function showCategoryNameConflict(form: HTMLFormElement) {
+    setCategoryNameInvalid(true);
+    setSaveStatus("error");
+    setStatusMessage(DUPLICATE_SIBLING_CATEGORY_MESSAGE);
+    requestAnimationFrame(() => {
+      const control = form.elements.namedItem("name");
+      if (control instanceof HTMLElement) {
+        control.focus({ preventScroll: true });
+        control.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
+    });
   }
 
   function saveBrand(event: FormEvent<HTMLFormElement>) {
@@ -2279,7 +2332,13 @@ export function AdminPage({
                           ? `افزودن زیر‌دسته به ${categoryPathLabel(newCategoryParentSlug)}`
                           : "افزودن دستهٔ مادر جدید"}
                     </h3>
-                    <label>نام فارسی<input name="name" required maxLength={120} defaultValue={editingCategory?.name} /></label>
+                    <label>نام فارسی<input name="name" required maxLength={120} defaultValue={editingCategory?.name} aria-invalid={categoryNameInvalid ? true : undefined} onChange={() => {
+                      setCategoryNameInvalid(false);
+                      if (statusMessageRef.current === DUPLICATE_SIBLING_CATEGORY_MESSAGE) {
+                        setStatusMessage("");
+                        setSaveStatus("idle");
+                      }
+                    }} /></label>
                     <label>نامک انگلیسی<input name="slug" required readOnly={editingCategory?.system} pattern="[A-Za-z0-9-]+" dir="ltr" placeholder="example-category" defaultValue={editingCategory?.slug} /></label>
                     <label>توضیح کوتاه<textarea name="description" maxLength={500} rows={3} defaultValue={editingCategory?.description} /></label>
                     <label>دستهٔ مادر / جایگاه

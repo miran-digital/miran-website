@@ -38,7 +38,7 @@ test("V57 compiled provider manager is owner-only and returns no credential mate
 
 test("V57 compiled provider writes and health checks reject unauthorized and cross-site requests", async (t) => {
   const worker = await workerFixture(t);
-  for (const [path, method] of [["/api/admin/payment-providers", "POST"], ["/api/admin/payment-providers", "PATCH"], ["/api/admin/payment-providers/zarinpal/health", "POST"]]) {
+  for (const [path, method] of [["/api/admin/payment-providers", "POST"], ["/api/admin/payment-providers", "PATCH"], ["/api/admin/payment-providers", "DELETE"], ["/api/admin/payment-providers/zarinpal/health", "POST"]]) {
     for (const [email, expected] of [["", 401], ["manager@example.test", 403]]) {
       const response = await worker.fetch(new Request(origin + path, { method, headers: headers(email), body: "{}" }), {}, context);
       assert.equal(response.status, expected);

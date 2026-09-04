@@ -25,6 +25,16 @@ import {
   IRAN_CURRENCY,
   normalizeLegacyPriceToRial,
 } from "../lib/money.ts";
+import {
+  introducesSiblingCategoryNameConflict,
+  type CategoryNameIdentity,
+} from "../lib/category-integrity.ts";
+
+type SystemCategoryNameIdentity = CategoryNameIdentity & { slug: string };
+type StorefrontWriteOptions = {
+  allowCategoryDeletionIds?: readonly string[];
+  systemCategoriesForNameValidation?: readonly SystemCategoryNameIdentity[];
+};
 
 type SettingsRow = { data: string };
 type RevisionRow = {
@@ -416,10 +426,14 @@ export async function writeStorefrontState(
   state: AdminState,
   actorEmail: string,
   databaseOverride?: D1Database,
+  options: StorefrontWriteOptions = {},
 ) {
   const database = databaseOverride ?? await requireDatabase();
   const previous = await readStorefrontState(database).catch(() => null);
   const requested = normalizeAdminState(state);
+  const allowedCategoryDeletions = new Set(
+    options.allowCategoryDeletionIds ?? [],
+  );
   const merged = previous
     ? {
         ...requested,
@@ -427,11 +441,21 @@ export async function writeStorefrontState(
           ...requested.customCategories,
           ...previous.customCategories.filter(
             (category) =>
-              !requested.customCategories.some((item) => item.id === category.id),
+              !requested.customCategories.some((item) => item.id === category.id) &&
+              !allowedCategoryDeletions.has(category.id),
           ),
         ],
       }
     : requested;
+  if (
+    options.systemCategoriesForNameValidation &&
+    introducesSiblingCategoryNameConflict(
+      managedCategoryNames(previous ?? createDefaultAdminState(), options.systemCategoriesForNameValidation),
+      managedCategoryNames(merged, options.systemCategoriesForNameValidation),
+    )
+  ) {
+    throw new Error("DUPLICATE_SIBLING_CATEGORY_NAME");
+  }
   const normalized = await enforceSellerOfferIntegrity(database, merged);
   const settings = { ...normalized, products: [] };
   const attributeDefinitions = collectAttributeDefinitions(normalized.products);
@@ -707,6 +731,35 @@ export async function writeStorefrontState(
     )
     .run();
   return normalized;
+}
+
+export async function countCategoryAttributeDefinitions(
+  categorySlug: string,
+  databaseOverride?: D1Database,
+) {
+  const database = databaseOverride ?? await requireDatabase();
+  const row = await database
+    .prepare(
+      "SELECT COUNT(*) AS count FROM catalog_attribute_definitions WHERE category_slug = ?",
+    )
+    .bind(categorySlug)
+    .first<{ count: number }>();
+  return Number(row?.count ?? 0);
+}
+
+function managedCategoryNames(
+  state: AdminState,
+  systemCategories: readonly SystemCategoryNameIdentity[],
+) {
+  const system = systemCategories.map((category) =>
+    state.customCategories.find(
+      (item) => item.system && item.slug === category.slug,
+    ) ?? category,
+  );
+  return [
+    ...system,
+    ...state.customCategories.filter((category) => !category.system),
+  ].map(({ id, name, parentSlug }) => ({ id, name, parentSlug }));
 }
 
 type AttributeDefinitionSnapshot = {

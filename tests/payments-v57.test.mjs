@@ -206,13 +206,18 @@ test("V57 enabling requires a real adapter and valid credentials; disabling pres
   assert.ok(await readPaymentProviderRuntimeConfig("zarinpal", { forVerification: true }, db, KEY));
 });
 
-test("V57 non-integrated definitions can be listed but cannot collect guessed credentials or activate", async (t) => {
-  const { database: db } = await database(t);
-  const config = await savePaymentProviderConfiguration({ provider: "saman", actorEmail: "owner@example.test", mode: "add", enabled: false, priority: 1 }, db, KEY);
-  assert.equal(config.added, true); assert.equal(config.integrated, false); assert.equal(config.configured, false); assert.equal(config.available, false);
-  await assert.rejects(savePaymentProviderConfiguration({ provider: "saman", enabled: true, actorEmail: "owner@example.test" }, db, KEY), /NOT_INTEGRATED/);
-  await assert.rejects(savePaymentProviderConfiguration({ provider: "saman", credentials: { terminalId: "12345" }, actorEmail: "owner@example.test" }, db, KEY), /FIELD_INVALID/);
+test("V58 non-integrated definitions remain visible but cannot be persisted, collect credentials or activate", async (t) => {
+  const { database: db, sqlite } = await database(t);
+  await assert.rejects(savePaymentProviderConfiguration({ provider: "saman", actorEmail: "owner@example.test", mode: "add", enabled: false, priority: 1 }, db, KEY), /NOT_INTEGRATED/);
+  await assert.rejects(savePaymentProviderConfiguration({ provider: "saman", enabled: true, actorEmail: "owner@example.test", mode: "update" }, db, KEY), /NOT_FOUND/);
+  await assert.rejects(savePaymentProviderConfiguration({ provider: "saman", credentials: { terminalId: "12345" }, actorEmail: "owner@example.test", mode: "add" }, db, KEY), /NOT_INTEGRATED/);
+  assert.equal(sqlite.prepare("SELECT count(*) AS count FROM payment_provider_configs WHERE provider = 'saman'").get().count, 0);
+  const config = (await listPaymentProviderAdminConfigs(db, KEY)).find((provider) => provider.provider === "saman");
+  assert.equal(config.added, false); assert.equal(config.integrated, false); assert.equal(config.configured, false); assert.equal(config.available, false);
   assert.equal(await readPaymentProviderRuntimeConfig("saman", { forVerification: true }, db, KEY), null);
+  sqlite.prepare("INSERT INTO payment_provider_configs (provider, enabled, sandbox, credentials_ciphertext, credentials_iv, updated_by) VALUES ('saman', 0, 0, 'legacy-metadata', 'legacy-iv', 'legacy-owner')").run();
+  await assert.rejects(savePaymentProviderConfiguration({ provider: "saman", enabled: true, actorEmail: "owner@example.test", mode: "update" }, db, KEY), /NOT_INTEGRATED/);
+  assert.equal(sqlite.prepare("SELECT enabled FROM payment_provider_configs WHERE provider = 'saman'").get().enabled, 0);
 });
 
 test("V57 old V55 AES-GCM merchant documents decrypt unchanged without a migration", async (t) => {

@@ -388,6 +388,10 @@
   font: inherit;
 }
 
+.categoryForm input[aria-invalid="true"] {
+  border-color: #b91c1c;
+}
+
 .brandingForm button,
 .categoryForm button,
 .categoryList button,

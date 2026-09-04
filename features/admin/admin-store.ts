@@ -43,11 +43,14 @@ export function loadAdminState() {
   return requestState("/api/admin/state");
 }
 
-export async function saveAdminState(state: AdminState) {
+export async function saveAdminState(
+  state: AdminState,
+  options: { deleteCategoryId?: string } = {},
+) {
   const response = await fetch("/api/admin/state", {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ state }),
+    body: JSON.stringify({ state, ...options }),
   });
   const payload = (await response.json()) as {
     state?: AdminState;

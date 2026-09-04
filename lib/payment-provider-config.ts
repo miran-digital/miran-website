@@ -59,6 +59,7 @@ export async function savePaymentProviderConfiguration(input: {
   const legacy = !existing ? legacyEnvironmentConfig(input.provider, env) : null;
   if (input.mode === "add" && (existing || legacy)) throw new PaymentConfigError("PAYMENT_PROVIDER_EXISTS");
   if (input.mode === "update" && !existing && !legacy) throw new PaymentConfigError("PAYMENT_PROVIDER_NOT_FOUND");
+  if (definition.integration !== "integrated") throw new PaymentConfigError("PAYMENT_PROVIDER_NOT_INTEGRATED");
   if (input.priority !== undefined && (!Number.isSafeInteger(input.priority) || input.priority < 0 || input.priority > 999)) {
     throw new PaymentConfigError("PAYMENT_PRIORITY_INVALID", "priority");
   }
@@ -116,6 +117,51 @@ export async function savePaymentProviderConfiguration(input: {
   ).bind(input.actorEmail, action, input.provider))]);
   if (result[0].meta.changes !== 1) throw new PaymentConfigError("PAYMENT_CONFIG_BUSY");
   return (await listPaymentProviderAdminConfigs(database, secretOverride ?? env.PAYMENT_CONFIG_ENCRYPTION_KEY)).find((config) => config.provider === input.provider)!;
+}
+
+export async function removePaymentProviderConfiguration(
+  provider: string,
+  actorEmail: string,
+  databaseOverride?: D1Database,
+) {
+  if (!findPaymentProvider(provider)) {
+    throw new PaymentConfigError("PAYMENT_PROVIDER_INVALID");
+  }
+  const { DB: database } = await bindings(databaseOverride);
+  if (!database) throw new PaymentConfigError("PAYMENT_CONFIG_DATABASE_MISSING");
+  const existing = await readRow(database, provider);
+  if (!existing) throw new PaymentConfigError("PAYMENT_PROVIDER_NOT_FOUND");
+  const history = await database
+    .prepare("SELECT 1 AS found FROM payment_attempts WHERE provider = ? LIMIT 1")
+    .bind(provider)
+    .first<{ found: number }>();
+  if (history) throw new PaymentConfigError("PAYMENT_PROVIDER_HAS_HISTORY");
+  if (existing.enabled === 1) throw new PaymentConfigError("PAYMENT_PROVIDER_ACTIVE");
+
+  const [deletion] = await database.batch([
+    database
+      .prepare(
+        "DELETE FROM payment_provider_configs WHERE provider = ? AND enabled = 0 " +
+        "AND NOT EXISTS (SELECT 1 FROM payment_attempts WHERE provider = ?)",
+      )
+      .bind(provider, provider),
+    database
+      .prepare(
+        "INSERT INTO admin_audit_log (actor_email, action, subject_id) " +
+        "SELECT ?, 'payment-provider.removed', ? WHERE changes() = 1",
+      )
+      .bind(actorEmail, provider),
+  ]);
+  if (deletion.meta.changes !== 1) {
+    const concurrentHistory = await database
+      .prepare("SELECT 1 AS found FROM payment_attempts WHERE provider = ? LIMIT 1")
+      .bind(provider)
+      .first<{ found: number }>();
+    throw new PaymentConfigError(
+      concurrentHistory ? "PAYMENT_PROVIDER_HAS_HISTORY" : "PAYMENT_CONFIG_BUSY",
+    );
+  }
+  return { provider, removed: true as const };
 }
 
 export async function readPaymentProviderRuntimeConfig(provider: string, options: { forVerification?: boolean } = {}, databaseOverride?: D1Database, secretOverride?: string): Promise<PaymentRuntimeConfig | null> {

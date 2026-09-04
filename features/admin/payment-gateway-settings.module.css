@@ -14,6 +14,8 @@
 .hint { font-size: .875rem; }
 .hint bdi { margin-inline-start: .5rem; }
 .actions { display: flex; flex-wrap: wrap; gap: var(--miran-space-2); }
+.notIntegrated { display: inline-flex; align-items: center; min-height: 2.75rem; color: #92400e; font-size: .875rem; font-weight: 700; }
+.panel .removeButton { border-color: #fecaca; color: #b91c1c; }
 .panel button { min-height: 2.75rem; border: 1px solid var(--miran-color-border); border-radius: var(--miran-radius-md); padding: .5rem 1rem; background: var(--miran-color-surface); color: var(--miran-color-brand); font: inherit; font-size: .875rem; font-weight: 700; cursor: pointer; }
 .toolbar button, .form button { background: var(--miran-color-brand); color: white; border-color: transparent; }
 .panel button:disabled { opacity: .5; cursor: not-allowed; }

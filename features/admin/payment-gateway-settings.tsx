@@ -8,7 +8,15 @@ import styles from "./payment-gateway-settings.module.css";
 
 type MessageHandler = (status: "loading" | "saving" | "saved" | "error", message: string) => void;
 type Editor = { provider: string; mode: "add" | "update" };
-type Payload = { providers?: AdminPaymentProvider[]; config?: AdminPaymentProvider; error?: string; field?: string; health?: PaymentHealth };
+type Payload = {
+  providers?: AdminPaymentProvider[];
+  config?: AdminPaymentProvider;
+  provider?: string;
+  removed?: boolean;
+  error?: string;
+  field?: string;
+  health?: PaymentHealth;
+};
 
 export function PaymentGatewaySettings({ onStatus, calendarMode }: { onStatus: MessageHandler; calendarMode: CalendarMode }) {
   const [providers, setProviders] = useState<AdminPaymentProvider[]>([]);
@@ -99,6 +107,50 @@ export function PaymentGatewaySettings({ onStatus, calendarMode }: { onStatus: M
     finally { setBusy(false); }
   }
 
+  async function removeProvider(config: AdminPaymentProvider) {
+    if (busy || config.enabled) return;
+    const confirmed = window.confirm(
+      `درگاه «${config.label}» از تنظیمات فروشگاه حذف شود؟\nاین عملیات اتصال خود Provider را از سیستم MIRAN حذف نمی‌کند و بعداً می‌توان آن را دوباره اضافه کرد.`,
+    );
+    if (!confirmed) return;
+    setBusy(true); onStatus("saving", "");
+    try {
+      const response = await fetch("/api/admin/payment-providers", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ provider: config.provider }),
+      });
+      const payload = await response.json() as Payload;
+      if (!response.ok || payload.removed !== true || payload.provider !== config.provider) {
+        throw new Error(payload.error || "حذف امن درگاه ممکن نشد.");
+      }
+      setProviders((current) => current.map((item) => item.provider === config.provider
+        ? {
+            ...item,
+            added: false,
+            enabled: false,
+            sandbox: false,
+            configured: false,
+            available: false,
+            credentialHints: {},
+            priority: 100,
+            updatedAt: "",
+            configurationSource: "none",
+            configurationError: "missing",
+          }
+        : item));
+      setHealthResults((current) => {
+        const next = { ...current };
+        delete next[config.provider];
+        return next;
+      });
+      if (editor?.provider === config.provider) setEditor(null);
+      onStatus("saved", "درگاه از فهرست تنظیمات حذف شد.");
+    } catch (error) {
+      onStatus("error", error instanceof Error ? error.message : "حذف امن درگاه ممکن نشد.");
+    } finally { setBusy(false); }
+  }
+
   return <section className={styles.panel} aria-label="درگاه‌های پرداخت" aria-busy={loading || busy}>
     <div className={styles.toolbar}>
       <h1 className={styles.visuallyHidden}>درگاه‌های پرداخت</h1>
@@ -119,9 +171,12 @@ export function PaymentGatewaySettings({ onStatus, calendarMode }: { onStatus: M
           </dl>
           {Object.entries(config.credentialHints).map(([name, hint]) => <p className={styles.hint} key={name}><span>{paymentProviderCatalog.find((item) => item.id === config.provider)?.credentialSchema.fields.find((field) => field.name === name)?.label}</span> <bdi>{hint}</bdi></p>)}
           <div className={styles.actions}>
-            <button type="button" disabled={busy} onClick={() => { setFieldError(""); setEditor({ mode: "update", provider: config.provider }); }}>ویرایش</button>
-            <button type="button" disabled={busy || !config.integrated} onClick={() => void checkHealth(config)}>بررسی پیکربندی</button>
-            <button type="button" disabled={busy || (!config.enabled && (!config.integrated || !config.configured || !config.encryptionReady))} onClick={() => void toggle(config)}>{config.enabled ? "غیرفعال‌سازی" : "فعال‌سازی"}</button>
+            {config.integrated ? <>
+              <button type="button" disabled={busy} onClick={() => { setFieldError(""); setEditor({ mode: "update", provider: config.provider }); }}>ویرایش</button>
+              <button type="button" disabled={busy} onClick={() => void checkHealth(config)}>بررسی پیکربندی</button>
+              <button type="button" disabled={busy || (!config.enabled && (!config.configured || !config.encryptionReady))} onClick={() => void toggle(config)}>{config.enabled ? "غیرفعال‌سازی" : "فعال‌سازی"}</button>
+            </> : <span className={styles.notIntegrated}>اتصال هنوز آماده نیست</span>}
+            <button className={styles.removeButton} type="button" disabled={busy || config.enabled} onClick={() => void removeProvider(config)}>حذف از فهرست</button>
           </div>
           {healthResults[config.provider] ? <p className={styles.health}><strong>نتیجهٔ بررسی پیکربندی: </strong>{healthResults[config.provider].message}</p> : null}
         </article>)}
@@ -130,7 +185,7 @@ export function PaymentGatewaySettings({ onStatus, calendarMode }: { onStatus: M
         <label className={styles.providerSelect}>ارائه‌دهندهٔ پرداخت
           <select value={editor.provider} disabled={busy || editor.mode === "update"} onChange={(event) => { setFieldError(""); setEditor({ ...editor, provider: event.target.value }); }}>
             <option value="">ابتدا درگاه را انتخاب کنید</option>
-            {paymentProviderCatalog.filter((item) => item.id === editor.provider || !providers.some((provider) => provider.provider === item.id && provider.added)).map((item) => <option value={item.id} key={item.id}>{item.label}{item.integration === "not-integrated" ? " — اتصال آماده نیست" : ""}</option>)}
+            {paymentProviderCatalog.filter((item) => item.id === editor.provider || !providers.some((provider) => provider.provider === item.id && provider.added)).map((item) => <option value={item.id} key={item.id} disabled={item.integration === "not-integrated"}>{item.label}{item.integration === "not-integrated" ? " — اتصال هنوز آماده نیست" : ""}</option>)}
           </select>
         </label>
         {definition ? <CredentialForm key={definition.id + editor.mode} definition={definition} config={selected} busy={busy} fieldError={fieldError} onFieldChange={(field) => { if (fieldError === field) setFieldError(""); }} onSubmit={save} /> : null}
@@ -154,7 +209,7 @@ function CredentialForm({ definition, config, busy, fieldError, onFieldChange, o
   return <form onSubmit={onSubmit} className={styles.form}>
     <fieldset disabled={busy}>
       <legend>{definition.label}</legend>
-      {!definition.credentialSchema.verified ? <p>قرارداد فنی این درگاه در این نسخه تأیید نشده است؛ دریافت اطلاعات پذیرنده و فعال‌سازی ممکن نیست. فقط می‌توانید آن را به فهرست غیرفعال اضافه کنید.</p> : null}
+      {!definition.credentialSchema.verified ? <p>اتصال این درگاه هنوز آماده نیست و تا زمان پیاده‌سازی Adapter رسمی قابل ذخیره یا فعال‌سازی نیست.</p> : null}
       {definition.credentialSchema.fields.map((field) => <label key={field.name}>{field.label}
         <input name={field.name} type={field.type} dir="ltr" autoComplete={field.secret ? "new-password" : "off"} maxLength={field.maxLength}
           required={field.required && !config?.configured} aria-invalid={fieldError === field.name ? true : undefined}
