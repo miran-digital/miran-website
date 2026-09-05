@@ -23,11 +23,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Verify application source diff
         run: |
-          git diff --check 577ed3c530e755d919184c68d5608aec0ba6e891^
-          test "$(git diff --name-only 577ed3c530e755d919184c68d5608aec0ba6e891^ 577ed3c530e755d919184c68d5608aec0ba6e891)" = "db/admin-customer-directory-repository.ts"
+          git diff --check e5cca0872aa8a0b5596d319e2ecd21c4cbf7f157 577ed3c530e755d919184c68d5608aec0ba6e891
+          test "$(git diff --name-only e5cca0872aa8a0b5596d319e2ecd21c4cbf7f157 577ed3c530e755d919184c68d5608aec0ba6e891)" = "db/admin-customer-directory-repository.ts"
 
       - name: Setup Node.js 24
         uses: actions/setup-node@v4
