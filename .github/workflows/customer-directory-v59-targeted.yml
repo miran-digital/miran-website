@@ -1,0 +1,73 @@
+name: Customer Directory V59 Targeted Verification
+
+on:
+  push:
+    branches:
+      - verify/customer-directory-d1-v59
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: V59 targeted gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify exact patch diff
+        run: git diff --check e5cca0872aa8a0b5596d319e2ecd21c4cbf7f157 577ed3c530e755d919184c68d5608aec0ba6e891
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Fresh install from lockfile
+        run: npm ci
+
+      - name: Customer Directory targeted tests
+        run: node --test tests/admin-customers.test.mjs
+
+      - name: D1 compound-select compatibility gate
+        shell: python
+        run: |
+          import re
+          import sqlite3
+          from pathlib import Path
+
+          source = Path("db/admin-customer-directory-repository.ts").read_text(encoding="utf-8")
+          match = re.search(r"const DIRECTORY_CTE = `(?P<sql>.*?)`;", source, re.S)
+          if not match:
+              raise SystemExit("DIRECTORY_CTE not found")
+
+          cte = match.group("sql")
+          db = sqlite3.connect(":memory:")
+          db.setlimit(sqlite3.SQLITE_LIMIT_COMPOUND_SELECT, 5)
+
+          ddl = [
+              "CREATE TABLE customer_accounts (email TEXT, auth_user_id TEXT, full_name TEXT, provider TEXT, email_confirmed_at TEXT, created_at TEXT, last_seen_at TEXT)",
+              "CREATE TABLE orders (customer_email TEXT, id TEXT, customer_name TEXT, created_at TEXT, updated_at TEXT)",
+              "CREATE TABLE customer_addresses (owner_email TEXT, id TEXT, created_at TEXT, updated_at TEXT)",
+              "CREATE TABLE support_tickets (customer_email TEXT, id TEXT, customer_name TEXT, created_at TEXT, updated_at TEXT)",
+              "CREATE TABLE product_reviews (customer_email TEXT, id TEXT, customer_name TEXT, created_at TEXT, updated_at TEXT)",
+              "CREATE TABLE customer_notifications (owner_email TEXT, id TEXT, created_at TEXT)",
+          ]
+          for statement in ddl:
+              db.execute(statement)
+
+          filter_sql = "WHERE instr(lower(replace(replace(full_name, 'ي', 'ی'), 'ك', 'ک')) || ' ' || email, ?) > 0"
+          count_sql = f"{cte} SELECT COUNT(*) count FROM directory {filter_sql}"
+          rows_sql = f"{cte} SELECT * FROM directory {filter_sql} ORDER BY registered_at DESC, email ASC LIMIT ? OFFSET ?"
+
+          count = db.execute(count_sql, ("[]", "")).fetchone()[0]
+          rows = db.execute(rows_sql, ("[]", "", 25, 0)).fetchall()
+          print(f"D1-limit COUNT gate PASS: count={count}")
+          print(f"D1-limit rows gate PASS: rows={len(rows)}")
