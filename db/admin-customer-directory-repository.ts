@@ -8,7 +8,7 @@ import type { SupabaseAdminUser } from "../lib/supabase-admin.ts";
 
 // Each legacy identity is anchored to an existing primary key, never a raw email URL.
 // No account, order, address or other production row is created by these SELECTs.
-const DIRECTORY_CTE = `WITH records AS (
+const DIRECTORY_CTE = `WITH core_records AS (
   SELECT lower(trim(email)) email, 'auth:' || auth_user_id customer_id,
     full_name, auth_user_id, provider, email_confirmed_at, created_at registered_at,
     last_seen_at, 1 identity_rank, 0 order_count, 0 address_count, 0 ticket_count, 0 review_count
@@ -24,15 +24,22 @@ const DIRECTORY_CTE = `WITH records AS (
   UNION ALL
   SELECT lower(trim(owner_email)), 'address:' || id, '', '', 'store', '',
     created_at, updated_at, 3, 0, 1, 0, 0 FROM customer_addresses
-  UNION ALL
-  SELECT lower(trim(customer_email)), 'ticket:' || id, customer_name, '', 'store', '',
-    created_at, updated_at, 4, 0, 0, 1, 0 FROM support_tickets
+), activity_records AS (
+  SELECT lower(trim(customer_email)) email, 'ticket:' || id customer_id,
+    customer_name full_name, '' auth_user_id, 'store' provider, '' email_confirmed_at,
+    created_at registered_at, updated_at last_seen_at,
+    4 identity_rank, 0 order_count, 0 address_count, 1 ticket_count, 0 review_count
+  FROM support_tickets
   UNION ALL
   SELECT lower(trim(customer_email)), 'review:' || id, customer_name, '', 'store', '',
     created_at, updated_at, 5, 0, 0, 0, 1 FROM product_reviews
   UNION ALL
   SELECT lower(trim(owner_email)), 'notification:' || id, '', '', 'store', '',
     created_at, created_at, 6, 0, 0, 0, 0 FROM customer_notifications
+), records AS (
+  SELECT * FROM core_records
+  UNION ALL
+  SELECT * FROM activity_records
 ), ranked AS (
   SELECT *, ROW_NUMBER() OVER (PARTITION BY email ORDER BY identity_rank, registered_at, customer_id) identity_position
   FROM records WHERE email != ''
