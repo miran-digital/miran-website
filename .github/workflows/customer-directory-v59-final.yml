@@ -1,0 +1,50 @@
+name: Customer Directory V59 Final Verification
+
+on:
+  push:
+    branches:
+      - verify/customer-directory-d1-v59-final
+
+permissions:
+  contents: read
+
+concurrency:
+  group: customer-directory-v59-final-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: V59 final gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify application source diff
+        run: |
+          git diff --check 577ed3c530e755d919184c68d5608aec0ba6e891^
+          test "$(git diff --name-only 577ed3c530e755d919184c68d5608aec0ba6e891^ 577ed3c530e755d919184c68d5608aec0ba6e891)" = "db/admin-customer-directory-repository.ts"
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Fresh install from lockfile
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
+
+      - name: Full tests
+        run: npm test
