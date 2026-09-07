@@ -47,6 +47,17 @@ export type CatalogProductSpecification = {
   value: string;
 };
 
+export type CatalogProductContentSection = {
+  id: string;
+  title: string;
+  body: string;
+};
+
+export type CatalogProductSpecificationGroup = {
+  title: string;
+  items: readonly CatalogProductSpecification[];
+};
+
 export type CatalogProductVariant = {
   id: string;
   title: string;
@@ -63,6 +74,7 @@ export type CatalogProductAttribute = {
   dataType: "text" | "number" | "boolean";
   value: string;
   unit?: string;
+  groupTitle?: string;
   filterable: boolean;
   searchable: boolean;
   comparable: boolean;
@@ -87,7 +99,9 @@ export type CatalogProductDetail = CatalogProductSummary & {
   primaryCategory: CatalogCategory;
   media: readonly CatalogProductMedia[];
   highlights: readonly string[];
+  contentSections: readonly CatalogProductContentSection[];
   specifications: readonly CatalogProductSpecification[];
+  specificationGroups: readonly CatalogProductSpecificationGroup[];
   attributes: readonly CatalogProductAttribute[];
   ratingAverage?: number | null;
   reviewCount: number;

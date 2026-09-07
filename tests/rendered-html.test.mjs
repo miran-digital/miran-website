@@ -48,6 +48,7 @@ async function createD1TestDatabase() {
     "0014_brave_ronan.sql",
     "0015_silent_kingpin.sql",
     "0016_famous_red_skull.sql",
+    "0017_product_content_architecture.sql",
   ]) {
     const sql = await readFile(new URL(`../drizzle/${file}`, import.meta.url), "utf8");
     for (const statement of sql.split("--> statement-breakpoint")) {

@@ -608,6 +608,7 @@ function buildProductDetail(
       "ارسال قابل پیگیری تا مقصد",
       "پشتیبانی Miran Shop پس از خرید",
     ],
+    contentSections: [{ id: "overview", title: "", body: `${product.title} از برند ${product.brandName}` }],
     specifications: [
       { label: "برند", value: product.brandName },
       { label: "دسته‌بندی", value: primaryCategory.name },
@@ -615,6 +616,15 @@ function buildProductDetail(
       { label: "کد کالا", value: product.sku ?? product.id.toUpperCase() },
       { label: "وضعیت", value: product.inStock ? "موجود" : "ناموجود" },
     ],
+    specificationGroups: [{
+      title: "",
+      items: [
+        { label: "برند", value: product.brandName },
+        { label: "دسته‌بندی", value: primaryCategory.name },
+        { label: "کد کالا", value: product.sku ?? product.id.toUpperCase() },
+        { label: "وضعیت", value: product.inStock ? "موجود" : "ناموجود" },
+      ],
+    }],
     attributes: [],
     reviewCount: 0,
     questionCount: 0,
@@ -1009,6 +1019,7 @@ export async function getCatalogProduct(slug: string) {
       dataType: attribute.dataType,
       value: attribute.value,
       ...(attribute.unit ? { unit: attribute.unit } : {}),
+      ...(attribute.groupTitle ? { groupTitle: attribute.groupTitle } : {}),
       filterable: attribute.filterable,
       searchable: attribute.searchable,
       comparable: attribute.comparable,
@@ -1027,6 +1038,14 @@ export async function getCatalogProduct(slug: string) {
         (isMockStorefrontAllowed()
           ? `${product.title}؛ محصول ثبت‌شده در کاتالوگ Miran Shop.`
           : ""),
+      contentSections: (product.contentSections ?? [])
+        .filter((section) => section.visible && section.body.trim())
+        .sort((left, right) => left.sortOrder - right.sortOrder)
+        .map((section) => ({
+          id: section.id,
+          title: section.title.trim(),
+          body: section.body.trim(),
+        })),
       media: [
         ...product.imageUrls.map((imageUrl, index) => ({
               id: `${product.id}-${index + 1}`,
@@ -1047,23 +1066,11 @@ export async function getCatalogProduct(slug: string) {
       highlights: attributes
         .filter((attribute) => attribute.keyFeature)
         .map((attribute) => `${attribute.label}: ${formatCatalogAttributeValue(attribute)}`),
-      specifications: attributes.length > 0
-        ? attributes.map((attribute) => ({
-            label: attribute.label,
-            value: formatCatalogAttributeValue(attribute),
-          }))
-        : [
-            { label: "برند", value: product.brand || "Miran" },
-            { label: "دسته‌بندی", value: primaryCategory.name },
-            { label: "کد کالا", value: product.sku || product.id.toUpperCase() },
-            {
-              label: "موجودی قابل سفارش",
-              value: Math.max(
-                0,
-                product.stockQuantity - product.reservedQuantity,
-              ).toLocaleString("fa-IR"),
-            },
-          ],
+      specifications: attributes.map((attribute) => ({
+        label: attribute.label,
+        value: formatCatalogAttributeValue(attribute),
+      })),
+      specificationGroups: buildSpecificationGroups(attributes),
       attributes,
       reviewCount: 0,
       questionCount: 0,
@@ -1107,6 +1114,28 @@ export async function getCatalogProduct(slug: string) {
     handleStorefrontFailure("product-detail");
     return mockCatalogGateway.getProduct(slug);
   }
+}
+
+function buildSpecificationGroups(attributes: readonly {
+  label: string;
+  dataType: "text" | "number" | "boolean";
+  value: string;
+  unit?: string;
+  groupTitle?: string;
+}[]) {
+  const groups = new Map<string, { title: string; items: { label: string; value: string }[] }>();
+  for (const attribute of attributes) {
+    if (!attribute.value.trim()) continue;
+    const title = attribute.groupTitle?.trim() ?? "";
+    const key = title || "__ungrouped__";
+    const group = groups.get(key) ?? { title, items: [] };
+    group.items.push({
+      label: attribute.label,
+      value: formatCatalogAttributeValue(attribute),
+    });
+    groups.set(key, group);
+  }
+  return [...groups.values()].filter((group) => group.items.length > 0);
 }
 
 function formatCatalogAttributeValue(attribute: {

@@ -54,6 +54,7 @@ type ProductRow = {
   sku: string;
   short_description: string | null;
   description: string;
+  content_sections_json: string;
   placement: AdminProduct["placement"];
   currency: string;
   price_minor: number;
@@ -129,9 +130,10 @@ type ProductAttributeRow = {
   value_number: number | null;
   value_boolean: number | null;
   key_feature: number;
+  group_title: string;
   sort_order: number;
 };
-type VariantAttributeRow = Omit<ProductAttributeRow, "product_id" | "key_feature" | "sort_order"> & {
+type VariantAttributeRow = Omit<ProductAttributeRow, "product_id" | "key_feature" | "group_title" | "sort_order"> & {
   variant_id: string;
 };
 
@@ -152,7 +154,7 @@ export async function readStorefrontState(databaseOverride?: D1Database): Promis
     database
       .prepare(
         `SELECT id, created_at, slug, title, english_title, brand, category, sku,
-                short_description, description, placement, currency,
+                short_description, description, content_sections_json, placement, currency,
                 price_minor, compare_at_price_minor, discount_type,
                 discount_value, stock_quantity,
                 reserved_quantity, image_url, video_url, amazing_enabled,
@@ -186,7 +188,7 @@ export async function readStorefrontState(databaseOverride?: D1Database): Promis
                 definition.data_type, definition.unit, definition.filterable,
                 definition.searchable, definition.comparable, value.value_text,
                 value.value_number, value.value_boolean, value.key_feature,
-                value.sort_order
+                value.group_title, value.sort_order
            FROM product_attribute_values AS value
            JOIN catalog_attribute_definitions AS definition
              ON definition.id = value.attribute_id
@@ -528,12 +530,12 @@ export async function writeStorefrontState(
         .prepare(
           `INSERT INTO products (
              id, slug, title, english_title, brand, category, sku,
-             short_description, description, placement, currency,
+             short_description, description, content_sections_json, placement, currency,
              price_minor, compare_at_price_minor, discount_type, discount_value,
              stock_quantity,
              reserved_quantity, image_url, video_url, amazing_enabled,
              amazing_starts_at, amazing_ends_at, visible, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
            ON CONFLICT(id) DO UPDATE SET
              slug = excluded.slug,
              title = excluded.title,
@@ -543,6 +545,7 @@ export async function writeStorefrontState(
              sku = excluded.sku,
              short_description = excluded.short_description,
              description = excluded.description,
+             content_sections_json = excluded.content_sections_json,
              placement = excluded.placement,
              currency = excluded.currency,
              price_minor = excluded.price_minor,
@@ -568,6 +571,7 @@ export async function writeStorefrontState(
           product.sku,
           product.shortDescription,
           product.description,
+          JSON.stringify(product.contentSections ?? []),
           product.placement,
           product.currency,
           product.priceMinor,
@@ -590,9 +594,9 @@ export async function writeStorefrontState(
           .prepare(
             `INSERT INTO product_attribute_values (
                id, product_id, attribute_id, value_text, value_number,
-               value_boolean, normalized_value, key_feature, sort_order,
+               value_boolean, normalized_value, key_feature, group_title, sort_order,
                visible, updated_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
              ON CONFLICT(id) DO UPDATE SET
                product_id = excluded.product_id,
                attribute_id = excluded.attribute_id,
@@ -601,6 +605,7 @@ export async function writeStorefrontState(
                value_boolean = excluded.value_boolean,
                normalized_value = excluded.normalized_value,
                key_feature = excluded.key_feature,
+               group_title = excluded.group_title,
                sort_order = excluded.sort_order,
                visible = 1,
                updated_at = CURRENT_TIMESTAMP`,
@@ -614,6 +619,7 @@ export async function writeStorefrontState(
             stored.boolean,
             stored.normalized,
             attribute.keyFeature ? 1 : 0,
+            attribute.groupTitle ?? "",
             attribute.sortOrder,
           );
       }),
@@ -1332,6 +1338,38 @@ async function requireDatabase() {
   return bindings.DB;
 }
 
+function parseProductContentSections(raw: string, productId: string, legacyDescription: string) {
+  try {
+    const parsed = JSON.parse(raw || "[]") as unknown;
+    if (Array.isArray(parsed)) {
+      const sections = parsed.flatMap((value, index) => {
+        if (typeof value !== "object" || value === null) return [];
+        const section = value as Record<string, unknown>;
+        const body = typeof section.body === "string" ? section.body.trim().slice(0, 8000) : "";
+        if (!body) return [];
+        return [{
+          id: typeof section.id === "string" && section.id.trim()
+            ? section.id.trim().slice(0, 120)
+            : `content-${productId}-${index + 1}`,
+          title: typeof section.title === "string" ? section.title.trim().slice(0, 160) : "",
+          body,
+          sortOrder: typeof section.sortOrder === "number" && Number.isSafeInteger(section.sortOrder)
+            ? Math.max(0, Math.min(1000, section.sortOrder))
+            : index,
+          visible: section.visible !== false,
+        }];
+      }).sort((left, right) => left.sortOrder - right.sortOrder);
+      if (sections.length > 0) return sections.map((section, index) => ({ ...section, sortOrder: index }));
+    }
+  } catch {
+    // Keep the legacy description available when older rows contain no section JSON.
+  }
+  const body = legacyDescription.trim().slice(0, 8000);
+  return body
+    ? [{ id: `legacy-content-${productId}`, title: "", body, sortOrder: 0, visible: true }]
+    : [];
+}
+
 function mapProduct(
   row: ProductRow,
   variants: AdminProductVariant[],
@@ -1350,6 +1388,7 @@ function mapProduct(
     sku: row.sku,
     shortDescription: row.short_description || null,
     description: row.description,
+    contentSections: parseProductContentSections(row.content_sections_json, row.id, row.description),
     placement: row.placement,
     currency: IRAN_CURRENCY,
     priceMinor: normalizeLegacyPriceToRial(row.price_minor, sourceCurrency),
@@ -1410,6 +1449,7 @@ function mapProductAttribute(row: ProductAttributeRow): AdminProductAttributeVal
     ...mapAttributeDefinition(row),
     id: row.id,
     value: attributeRowValue(row),
+    ...(row.group_title ? { groupTitle: row.group_title } : {}),
     keyFeature: row.key_feature === 1,
     sortOrder: row.sort_order,
   };

@@ -54,6 +54,7 @@ import {
   type AdminProductDiscountType,
   type AdminProductPlacement,
   type AdminProduct,
+  type AdminProductContentSection,
   type AdminPermission,
   type AdminRole,
   type AdminSectionKey,
@@ -333,6 +334,7 @@ export function AdminPage({
   const [receiptBusy, setReceiptBusy] = useState(false);
   const [orderBusy, setOrderBusy] = useState(false);
   const [editingProductId, setEditingProductId] = useState("");
+  const [productContentSections, setProductContentSections] = useState<AdminProductContentSection[]>([]);
   const [editingCategoryId, setEditingCategoryId] = useState("");
   const [newCategoryParentSlug, setNewCategoryParentSlug] = useState("");
   const [editingBrandId, setEditingBrandId] = useState("");
@@ -654,6 +656,7 @@ export function AdminPage({
     const product = state.products.find((item) => item.id === productId);
     clearSelectedProductMedia();
     setEditingProductId(productId);
+    setProductContentSections((product?.contentSections ?? []).map((section) => ({ ...section })));
     setProductEditorVersion((version) => version + 1);
     setPrimaryProductImage(product?.imageUrls[0] ?? "");
     setProductCategorySelection(product?.category ?? "");
@@ -669,6 +672,7 @@ export function AdminPage({
   function cancelProductEdit() {
     clearSelectedProductMedia();
     setEditingProductId("");
+    setProductContentSections([]);
     setProductCategorySelection("");
     setProductBrandSelection("");
   }
@@ -1587,6 +1591,7 @@ export function AdminPage({
         .map((attribute, index) => ({
           ...attribute,
           value: String(data.get(`attributeValue-${attribute.id}`) ?? attribute.value).trim().slice(0, 500),
+          groupTitle: String(data.get(`attributeGroup-${attribute.id}`) ?? attribute.groupTitle ?? "").trim().slice(0, 120) || null,
           keyFeature: data.get(`attributeKey-${attribute.id}`) === "on",
           sortOrder: index,
         }));
@@ -1594,6 +1599,7 @@ export function AdminPage({
       if (newProductAttribute) {
         productAttributes.push({
           ...newProductAttribute,
+          groupTitle: String(data.get("newProductAttributeGroup") ?? "").trim().slice(0, 120) || null,
           keyFeature: data.get("newProductAttributeKey") === "on",
           sortOrder: productAttributes.length,
         });
@@ -1670,6 +1676,21 @@ export function AdminPage({
         }
       }
 
+      const contentSections = productContentSections
+        .map((section, index) => ({
+          id: section.id,
+          title: String(data.get(`contentSectionTitle-${section.id}`) ?? section.title).trim().slice(0, 160),
+          body: String(data.get(`contentSectionBody-${section.id}`) ?? section.body).trim().slice(0, 8000),
+          sortOrder: index,
+          visible: data.get(`contentSectionVisible-${section.id}`) === "on",
+        }))
+        .filter((section) => Boolean(section.body));
+      const legacyDescription = contentSections
+        .filter((section) => section.visible)
+        .map((section) => [section.title, section.body].filter(Boolean).join("\n"))
+        .join("\n\n")
+        .slice(0, 2000);
+
       const sellerOffers = can("security.write")
         ? eligibleSellers
             .filter((seller) => data.get(`sellerEnabled-${seller.id}`) === "on")
@@ -1698,7 +1719,8 @@ export function AdminPage({
         category,
         sku,
         shortDescription: String(data.get("shortDescription") ?? "").trim().slice(0, 500) || null,
-        description: String(data.get("description") ?? "").trim().slice(0, 2000),
+        description: legacyDescription,
+        contentSections,
         placement: String(
           data.get("placement") ?? "special-offers",
         ) as AdminProductPlacement,
@@ -1736,6 +1758,7 @@ export function AdminPage({
       form.reset();
       clearSelectedProductMedia();
       setEditingProductId(nextProduct.id);
+      setProductContentSections(nextProduct.contentSections.map((section) => ({ ...section })));
       setProductEditorVersion((version) => version + 1);
       setPrimaryProductImage(nextProduct.imageUrls[0] ?? "");
       setProductCategorySelection(nextProduct.category);
@@ -2673,7 +2696,66 @@ export function AdminPage({
                       </select>
                     </label>
                     <label>توضیح کوتاه (اختیاری)<textarea name="shortDescription" maxLength={500} rows={2} defaultValue={editingProduct?.shortDescription ?? ""} /></label>
-                    <label>توضیح کامل<textarea name="description" maxLength={2000} rows={4} defaultValue={editingProduct?.description} /></label>
+                    <fieldset className={styles.productContentEditor}>
+                      <legend>بخش‌های محتوای محصول</legend>
+                      <p>برای هر محصول هر تعداد بخش لازم است بسازید. عنوان اختیاری است؛ بخش بدون متن در فروشگاه نمایش داده نمی‌شود. برای فهرست، خط را با - یا • و برای زیرعنوان داخل متن با # شروع کنید.</p>
+                      {productContentSections.length === 0 ? (
+                        <p className={styles.productContentEmpty}>هنوز بخش محتوایی تعریف نشده است.</p>
+                      ) : null}
+                      {productContentSections.map((section, index) => (
+                        <article key={section.id} className={styles.productContentCard}>
+                          <div className={styles.productContentCardHeader}>
+                            <strong>بخش {(index + 1).toLocaleString("fa-IR")}</strong>
+                            <span>
+                              <button
+                                type="button"
+                                disabled={index === 0}
+                                onClick={() => setProductContentSections((items) => {
+                                  if (index === 0) return items;
+                                  const next = [...items];
+                                  [next[index - 1], next[index]] = [next[index]!, next[index - 1]!];
+                                  return next.map((item, position) => ({ ...item, sortOrder: position }));
+                                })}
+                              >بالا</button>
+                              <button
+                                type="button"
+                                disabled={index === productContentSections.length - 1}
+                                onClick={() => setProductContentSections((items) => {
+                                  if (index >= items.length - 1) return items;
+                                  const next = [...items];
+                                  [next[index], next[index + 1]] = [next[index + 1]!, next[index]!];
+                                  return next.map((item, position) => ({ ...item, sortOrder: position }));
+                                })}
+                              >پایین</button>
+                              <button
+                                type="button"
+                                className={styles.dangerButton}
+                                onClick={() => setProductContentSections((items) =>
+                                  items.filter((item) => item.id !== section.id).map((item, position) => ({ ...item, sortOrder: position })),
+                                )}
+                              >حذف</button>
+                            </span>
+                          </div>
+                          <label>عنوان بخش (اختیاری)<input name={`contentSectionTitle-${section.id}`} maxLength={160} defaultValue={section.title} placeholder="مثلاً نگاه تخصصی" /></label>
+                          <label>متن بخش<textarea name={`contentSectionBody-${section.id}`} maxLength={8000} rows={6} defaultValue={section.body} placeholder="متن این بخش را وارد کنید. خط‌های جدا و فهرست‌های ساده در صفحه محصول مرتب نمایش داده می‌شوند." /></label>
+                          <label><input name={`contentSectionVisible-${section.id}`} type="checkbox" defaultChecked={section.visible} /> نمایش این بخش در فروشگاه</label>
+                        </article>
+                      ))}
+                      <button
+                        type="button"
+                        className={styles.variantQuickAction}
+                        onClick={() => setProductContentSections((items) => [
+                          ...items,
+                          {
+                            id: createAdminId("product-content"),
+                            title: "",
+                            body: "",
+                            sortOrder: items.length,
+                            visible: true,
+                          },
+                        ])}
+                      >افزودن بخش محتوایی</button>
+                    </fieldset>
                     <fieldset className={styles.priceEditor}>
                       <legend>ویژگی‌های ساختاریافته محصول</legend>
                       <p>هر ویژگی یک تعریف واحد دارد و برای مشخصات فنی، ویژگی‌های کلیدی، فیلتر، جست‌وجو و مقایسه استفاده می‌شود.</p>
@@ -2682,6 +2764,7 @@ export function AdminPage({
                           <strong>{attribute.label}</strong>
                           <small><span dir="ltr">{attribute.code}</span> · {attribute.dataType === "number" ? "عددی" : attribute.dataType === "boolean" ? "بله/خیر" : "متنی"}{attribute.unit ? ` · ${attribute.unit}` : ""}</small>
                           <label>مقدار<AttributeValueInput name={`attributeValue-${attribute.id}`} dataType={attribute.dataType} defaultValue={attribute.value} /></label>
+                          <label>عنوان گروه مشخصات (اختیاری)<input name={`attributeGroup-${attribute.id}`} maxLength={120} defaultValue={attribute.groupTitle ?? ""} placeholder="مثلاً مشخصات فنی" /></label>
                           <label><input name={`attributeKey-${attribute.id}`} type="checkbox" defaultChecked={attribute.keyFeature} /> ویژگی کلیدی</label>
                           <label><input name={`attributeDelete-${attribute.id}`} type="checkbox" /> بایگانی مقدار</label>
                           <small>{[attribute.filterable ? "فیلتر" : "", attribute.searchable ? "جست‌وجو" : "", attribute.comparable ? "مقایسه" : ""].filter(Boolean).join(" · ") || "فقط نمایش مشخصات"}</small>
@@ -2694,6 +2777,7 @@ export function AdminPage({
                         <label>نوع داده<select name="newProductAttributeDataType" defaultValue="text"><option value="text">متنی</option><option value="number">عددی</option><option value="boolean">بله/خیر</option></select></label>
                         <label>مقدار<input name="newProductAttributeValue" maxLength={500} placeholder="برای بله/خیر: true یا false" /></label>
                         <label>واحد (اختیاری)<input name="newProductAttributeUnit" maxLength={40} placeholder="مثلاً گرم" /></label>
+                        <label>عنوان گروه مشخصات (اختیاری)<input name="newProductAttributeGroup" maxLength={120} placeholder="مثلاً ویژگی‌های محصول" /></label>
                         <label><input name="newProductAttributeKey" type="checkbox" /> ویژگی کلیدی</label>
                         <label><input name="newProductAttributeFilterable" type="checkbox" /> قابل فیلتر</label>
                         <label><input name="newProductAttributeSearchable" type="checkbox" /> قابل جست‌وجو</label>

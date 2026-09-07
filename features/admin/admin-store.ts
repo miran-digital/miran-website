@@ -18,6 +18,7 @@ export {
   normalizeSlug,
   stableBrandSlug,
   type AdminProduct,
+  type AdminProductContentSection,
   type AdminProductDiscountType,
   type AdminProductPlacement,
   type AdminPermission,

@@ -207,6 +207,14 @@ export type AdminAmazingSection = {
   showTimer: boolean;
 };
 
+export type AdminProductContentSection = {
+  id: string;
+  title: string;
+  body: string;
+  sortOrder: number;
+  visible: boolean;
+};
+
 export type AdminProductVariant = {
   id: string;
   title: string;
@@ -229,6 +237,7 @@ export type AdminProductAttributeValue = {
   dataType: AdminAttributeDataType;
   unit: string | null;
   value: string;
+  groupTitle?: string | null;
   filterable: boolean;
   searchable: boolean;
   comparable: boolean;
@@ -238,7 +247,7 @@ export type AdminProductAttributeValue = {
 
 export type AdminVariantAttributeValue = Omit<
   AdminProductAttributeValue,
-  "keyFeature" | "sortOrder"
+  "keyFeature" | "sortOrder" | "groupTitle"
 >;
 
 export type AdminSellerOffer = {
@@ -264,6 +273,7 @@ export type AdminProduct = {
   sku: string;
   shortDescription: string | null;
   description: string;
+  contentSections?: AdminProductContentSection[];
   placement: AdminProductPlacement;
   currency: string;
   priceMinor: number;
@@ -574,6 +584,7 @@ export function normalizeAdminState(state: AdminState): AdminState {
       sku: product.sku.trim().toUpperCase().slice(0, 80),
       shortDescription: normalizeOptionalText(product.shortDescription, 500),
       description: product.description.trim().slice(0, 2000),
+      contentSections: normalizeProductContentSections(product),
       currency: IRAN_CURRENCY,
       priceMinor: normalizeLegacyPriceToRial(
         product.priceMinor,
@@ -628,6 +639,35 @@ export function normalizeAdminState(state: AdminState): AdminState {
   };
 }
 
+function normalizeProductContentSections(product: AdminProduct): AdminProductContentSection[] {
+  const explicit = Array.isArray(product.contentSections)
+    ? product.contentSections
+        .slice(0, 32)
+        .map((section, index) => ({
+          id: section.id.trim().slice(0, 120) || `content-${product.id}-${index + 1}`,
+          title: section.title.trim().slice(0, 160),
+          body: section.body.trim().slice(0, 8000),
+          sortOrder: Number.isSafeInteger(section.sortOrder)
+            ? Math.max(0, Math.min(1000, section.sortOrder))
+            : index,
+          visible: section.visible === true,
+        }))
+        .filter((section) => Boolean(section.body))
+        .sort((left, right) => left.sortOrder - right.sortOrder)
+    : [];
+  if (explicit.length > 0) return explicit.map((section, index) => ({ ...section, sortOrder: index }));
+  const legacyBody = product.description.trim().slice(0, 8000);
+  return legacyBody
+    ? [{
+        id: `legacy-content-${product.id}`,
+        title: "",
+        body: legacyBody,
+        sortOrder: 0,
+        visible: true,
+      }]
+    : [];
+}
+
 function normalizeOptionalText(value: string | null | undefined, maxLength: number) {
   const normalized = typeof value === "string" ? value.trim().slice(0, maxLength) : "";
   return normalized || null;
@@ -645,6 +685,9 @@ function normalizeProductAttribute(
     dataType: normalizeAttributeDataType(attribute.dataType),
     unit: normalizeOptionalText(attribute.unit, 40),
     value: attribute.value.trim().slice(0, 500),
+    ...(normalizeOptionalText(attribute.groupTitle, 120)
+      ? { groupTitle: normalizeOptionalText(attribute.groupTitle, 120) }
+      : {}),
     filterable: attribute.filterable === true,
     searchable: attribute.searchable === true,
     comparable: attribute.comparable === true,
@@ -985,6 +1028,10 @@ function isProduct(value: unknown): value is AdminProduct {
     isShortString(item.sku, 80) &&
     isOptionalNullableString(item.shortDescription, 500) &&
     isShortString(item.description, 2000) &&
+    (item.contentSections === undefined ||
+      (Array.isArray(item.contentSections) &&
+        item.contentSections.length <= 32 &&
+        item.contentSections.every(isProductContentSection))) &&
     placements.includes(item.placement as AdminProductPlacement) &&
     isCurrencyCode(item.currency) &&
     typeof item.priceMinor === "number" &&
@@ -1104,6 +1151,21 @@ function isAdminUser(value: unknown): value is AdminUser {
   );
 }
 
+function isProductContentSection(value: unknown): value is AdminProductContentSection {
+  if (typeof value !== "object" || value === null) return false;
+  const item = value as Record<string, unknown>;
+  return (
+    isShortString(item.id, 120) &&
+    isShortString(item.title, 160) &&
+    isShortString(item.body, 8000) &&
+    typeof item.sortOrder === "number" &&
+    Number.isSafeInteger(item.sortOrder) &&
+    item.sortOrder >= 0 &&
+    item.sortOrder <= 1000 &&
+    typeof item.visible === "boolean"
+  );
+}
+
 function isProductVariant(value: unknown): value is AdminProductVariant {
   if (typeof value !== "object" || value === null) return false;
   const item = value as Record<string, unknown>;
@@ -1151,6 +1213,7 @@ function isBaseAttribute(value: unknown) {
     (item.dataType === "text" || item.dataType === "number" || item.dataType === "boolean") &&
     (item.unit === null || isShortString(item.unit, 40)) &&
     isShortString(item.value, 500) &&
+    (item.groupTitle === undefined || item.groupTitle === null || isShortString(item.groupTitle, 120)) &&
     typeof item.filterable === "boolean" &&
     typeof item.searchable === "boolean" &&
     typeof item.comparable === "boolean"

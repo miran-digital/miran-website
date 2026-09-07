@@ -120,6 +120,13 @@
       "when": 1787695118130,
       "tag": "0016_famous_red_skull",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1788783217574,
+      "tag": "0017_product_content_architecture",
+      "breakpoints": true
     }
   ]
 }

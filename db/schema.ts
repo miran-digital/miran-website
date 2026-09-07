@@ -27,6 +27,7 @@ export const products = sqliteTable(
     sku: text("sku").notNull().default(""),
     shortDescription: text("short_description"),
     description: text("description").notNull().default(""),
+    contentSectionsJson: text("content_sections_json").notNull().default("[]"),
     placement: text("placement").notNull(),
     // Kept at the legacy database default to avoid rebuilding a live table;
     // every application write explicitly persists IRR.
@@ -133,6 +134,7 @@ export const productAttributeValues = sqliteTable(
     valueBoolean: integer("value_boolean", { mode: "boolean" }),
     normalizedValue: text("normalized_value").notNull().default(""),
     keyFeature: integer("key_feature", { mode: "boolean" }).notNull().default(false),
+    groupTitle: text("group_title").notNull().default(""),
     sortOrder: integer("sort_order").notNull().default(0),
     visible: integer("visible", { mode: "boolean" }).notNull().default(true),
     updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
